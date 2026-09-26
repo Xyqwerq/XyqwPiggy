@@ -1,5 +1,6 @@
 -- ========== XyqwPiggy v1.9 ==========
 -- Piggy Script | made by Xyqwerq
+-- Fixed: 3D models, scroll, tool usage, mapping, notifications
 
 local VERSION = "1.9"
 local Players = game:GetService("Players")
@@ -11,74 +12,137 @@ local ContentProvider = game:GetService("ContentProvider")
 local LP = Players.LocalPlayer
 
 local THEME = {
-    BG = Color3.fromRGB(0, 0, 0),
-    DARK = Color3.fromRGB(40, 0, 0),
-    MAIN = Color3.fromRGB(255, 0, 0),
-    TITLE = Color3.fromRGB(20, 0, 0),
-    SUBTEXT = Color3.fromRGB(180, 180, 180),
-    ON = Color3.fromRGB(0, 220, 90),
-    OFF = Color3.fromRGB(220, 0, 0),
+    BG     = Color3.fromRGB(0, 0, 0),
+    DARK   = Color3.fromRGB(40, 0, 0),
+    MAIN   = Color3.fromRGB(255, 0, 0),
+    TITLE  = Color3.fromRGB(20, 0, 0),
+    SUB    = Color3.fromRGB(180, 180, 180),
+    ON     = Color3.fromRGB(0, 220, 90),
+    OFF    = Color3.fromRGB(220, 0, 0),
     STROKE = Color3.fromRGB(120, 0, 0),
+    ITEM   = Color3.fromRGB(0, 255, 255),
+    DOOR   = Color3.fromRGB(255, 220, 0),
 }
 
+-- ============================================================
+-- NOTIFICATIONS (Roblox only)
+-- ============================================================
 local function Notify(text, duration)
     duration = duration or 2
     pcall(function()
         StarterGui:SetCore("SendNotification", {
-            Title = "XyqwPiggy", Text = text, Duration = duration
+            Title = "XyqwPiggy", Text = tostring(text), Duration = duration
         })
     end)
 end
 
+-- ============================================================
+-- STROKE HELPERS
+-- ============================================================
 local function AddStroke(parent, color, thickness)
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = color or THEME.STROKE
-    stroke.Thickness = thickness or 1.5
-    stroke.Parent = parent
-    return stroke
+    local s = Instance.new("UIStroke")
+    s.Color = color or THEME.STROKE
+    s.Thickness = thickness or 1.5
+    s.Parent = parent
+    return s
 end
 
 local function AddTextStroke(label)
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = THEME.STROKE
-    stroke.Thickness = 1
-    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
-    stroke.Parent = label
+    local s = Instance.new("UIStroke")
+    s.Color = THEME.STROKE
+    s.Thickness = 1
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+    s.Parent = label
 end
 
--- ========== MAPPING ==========
+-- ============================================================
+-- MESH → NAME MAPPING (по диагностике)
+-- ============================================================
 local MESH_NAMES = {
-    ["rbxassetid://456878024"] = "Key",
-    ["rbxassetid://725833400"] = "Hammer",
-    ["rbxassetid://524706126"] = "Item",
-    ["rbxassetid://6714051581"] = "Item",
-    ["http://www.roblox.com/asset/?id=16884681"] = "Item",
-    ["http://www.roblox.com/asset/?id=16198309"] = "Plank",
-    ["http://www.roblox.com/asset/?id=72012879"] = "Battery",
-    ["http://www.roblox.com/asset/?id=60791940"] = "Item",
+    ["rbxassetid://725833400"]              = "Hammer",
+    ["rbxassetid://456878024"]              = "Key",     -- но имя уточняется по цвету
+    ["rbxassetid://524706126"]              = "Gear",
+    ["http://www.roblox.com/asset/?id=16884681"]  = "Tool",
+    ["http://www.roblox.com/asset/?id=16198309"]  = "Plank",
+    ["http://www.roblox.com/asset/?id=72012879"]  = "Battery",
+    ["http://www.roblox.com/asset/?id=60791940"]  = "Gear",
 }
 
+-- ============================================================
+-- GET ITEM NAME: сначала цвет ключа, потом MeshId
+-- ============================================================
 local function GetItemName(item)
     local part = item.part
-    if not part then return "Item encrypted" end
+    if not part then return "Item" end
+
+    -- 1) ParticleEmitter → цвет ключа
+    local pe = part:FindFirstChildOfClass("ParticleEmitter")
+    if pe then
+        local c = pe.Color
+        if c.R > 0.8 and c.G < 0.3 and c.B < 0.3 then return "🔴 Red Key" end
+        if c.B > 0.8 and c.R < 0.3 and c.G < 0.3 then return "🔵 Blue Key" end
+        if c.G > 0.8 and c.R < 0.3 and c.B < 0.3 then return "🟢 Green Key" end
+        if c.B > 0.8 and c.G > 0.8 and c.R < 0.3 then return "🩵 Cyan Key" end
+        if c.R > 0.8 and c.G > 0.8 and c.B < 0.3 then return "🟡 Yellow Key" end
+        if c.R > 0.8 and c.G > 0.3 and c.B > 0.8 then return "🩷 Pink Key" end
+    end
+
+    -- 2) MeshId
     local mesh = part:FindFirstChildOfClass("SpecialMesh")
     if mesh and mesh.MeshId and MESH_NAMES[mesh.MeshId] then
         return MESH_NAMES[mesh.MeshId]
     end
-    local pe = part:FindFirstChildOfClass("ParticleEmitter")
-    if pe then
-        local c = pe.Color
-        if c.R > 0.8 and c.G < 0.3 and c.B < 0.3 then return "Red Key" end
-        if c.B > 0.8 and c.R < 0.3 and c.G < 0.3 then return "Blue Key" end
-        if c.G > 0.8 and c.R < 0.3 and c.B < 0.3 then return "Green Key" end
-        if c.B > 0.8 and c.G > 0.8 and c.R < 0.3 then return "Cyan Key" end
-        if c.R > 0.8 and c.G > 0.8 and c.B < 0.3 then return "Yellow Key" end
-        if c.R > 0.8 and c.G > 0.3 and c.B > 0.8 then return "Pink Key" end
-        if c.R > 0.8 and c.G > 0.4 and c.B < 0.2 then return "Orange Key" end
-    end
-    return "Item encrypted"
+
+    return "Item"
 end
 
+-- ============================================================
+-- GET REAL ITEMS (ParticleEmitter filter)
+-- ============================================================
+local function IsInMenu(part)
+    local c = part
+    while c do
+        local n = c.Name
+        if n == "MenuCameras" or n == "MainMenuForest" or n == "MainMenuScreen"
+        or n == "ItemsScreen" or n == "ItemsFocus" or n == "ItemsCamera" then
+            return true
+        end
+        c = c.Parent
+    end
+    return false
+end
+
+local function GetRealItems()
+    local items = {}
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("ClickDetector") then
+            local part = obj.Parent
+            if part and part:IsA("BasePart") and not IsInMenu(part) then
+                if part:FindFirstChildOfClass("ParticleEmitter") then
+                    table.insert(items, { part = part, detector = obj })
+                end
+            end
+        end
+    end
+    return items
+end
+
+-- ============================================================
+-- PART TYPE (Item / Door)
+-- ============================================================
+local function GetPartType(part)
+    if part:FindFirstChildOfClass("ParticleEmitter") then return "Item" end
+    for _, ch in ipairs(part:GetChildren()) do
+        if ch:IsA("Script") and ch.Name:match("^%-?%d+$") then
+            return "Door"
+        end
+    end
+    return "Unknown"
+end
+
+-- ============================================================
+-- STATE
+-- ============================================================
 local State = {
     ESP = { Items = false, Monster = false, Players = false },
     ToolIndicator = false,
@@ -86,11 +150,23 @@ local State = {
     DeletePiggy = false,
 }
 
+-- ============================================================
+-- CLEANUP PREVIOUS
+-- ============================================================
 for _, obj in ipairs(CoreGui:GetChildren()) do
-    if obj.Name == "XyqwPiggy" or obj.Name == "XyqwPiggyESP" then obj:Destroy() end
+    if obj.Name == "XyqwPiggy" or obj.Name == "XyqwPiggyESP" then
+        pcall(function() obj:Destroy() end)
+    end
+end
+for _, obj in ipairs(LP:WaitForChild("PlayerGui"):GetChildren()) do
+    if obj.Name == "XyqwPiggy" or obj.Name == "XyqwPiggyESP" then
+        pcall(function() obj:Destroy() end)
+    end
 end
 
--- ========== SCREEN ==========
+-- ============================================================
+-- SCREEN GUI
+-- ============================================================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "XyqwPiggy"
 ScreenGui.ResetOnSpawn = false
@@ -100,7 +176,9 @@ ScreenGui.DisplayOrder = 999
 pcall(function() ScreenGui.Parent = CoreGui end)
 if not ScreenGui.Parent then ScreenGui.Parent = LP:WaitForChild("PlayerGui") end
 
--- ========== MAIN FRAME ==========
+-- ============================================================
+-- MAIN FRAME
+-- ============================================================
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 280, 0, 340)
 MainFrame.Position = UDim2.new(0.5, -140, 0.3, 0)
@@ -109,19 +187,14 @@ MainFrame.BorderSizePixel = 3
 MainFrame.BorderColor3 = THEME.MAIN
 MainFrame.Active = true
 MainFrame.Parent = ScreenGui
-
-local MC = Instance.new("UICorner")
-MC.CornerRadius = UDim.new(0, 10)
-MC.Parent = MainFrame
+local MC = Instance.new("UICorner"); MC.CornerRadius = UDim.new(0, 10); MC.Parent = MainFrame
 
 local TitleBar = Instance.new("Frame")
 TitleBar.Size = UDim2.new(1, 0, 0, 30)
 TitleBar.BackgroundColor3 = THEME.TITLE
 TitleBar.BorderSizePixel = 0
 TitleBar.Parent = MainFrame
-local TC = Instance.new("UICorner")
-TC.CornerRadius = UDim.new(0, 10)
-TC.Parent = TitleBar
+local TC = Instance.new("UICorner"); TC.CornerRadius = UDim.new(0, 10); TC.Parent = TitleBar
 
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, -80, 1, 0)
@@ -170,7 +243,7 @@ SearchBar.Size = UDim2.new(1, -20, 0, 24)
 SearchBar.Position = UDim2.new(0, 10, 0, 36)
 SearchBar.BackgroundColor3 = THEME.DARK
 SearchBar.PlaceholderText = "Search items..."
-SearchBar.PlaceholderColor3 = THEME.SUBTEXT
+SearchBar.PlaceholderColor3 = THEME.SUB
 SearchBar.Text = ""
 SearchBar.TextColor3 = THEME.MAIN
 SearchBar.TextSize = 12
@@ -190,15 +263,26 @@ ItemScroll.BorderSizePixel = 0
 ItemScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 ItemScroll.ScrollBarThickness = 4
 ItemScroll.ScrollBarImageColor3 = THEME.MAIN
+ItemScroll.ScrollingDirection = Enum.ScrollingDirection.Y
 ItemScroll.Parent = MainFrame
 
 local ItemLayout = Instance.new("UIListLayout")
 ItemLayout.Padding = UDim.new(0, 4)
 ItemLayout.Parent = ItemScroll
-
 ItemLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    ItemScroll.CanvasSize = UDim2.new(0, 0, 0, ItemLayout.AbsoluteContentSize.Y + 70)
+    ItemScroll.CanvasSize = UDim2.new(0, 0, 0, ItemLayout.AbsoluteContentSize.Y + 10)
 end)
+
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(1, -20, 0, 14)
+StatusLabel.Position = UDim2.new(0, 10, 1, -60)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Text = "Items: 0"
+StatusLabel.TextColor3 = THEME.SUB
+StatusLabel.TextSize = 11
+StatusLabel.Font = Enum.Font.Gotham
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatusLabel.Parent = MainFrame
 
 local ScanBtn = Instance.new("TextButton")
 ScanBtn.Size = UDim2.new(0, 140, 0, 32)
@@ -215,17 +299,18 @@ ScanBtn.AutoButtonColor = false
 ScanBtn.ZIndex = 10
 AddStroke(ScanBtn, THEME.MAIN, 2); AddTextStroke(ScanBtn)
 
--- ========== MISC ==========
+-- ============================================================
+-- MISC FRAME
+-- ============================================================
 local MiscFrame = Instance.new("Frame")
-MiscFrame.Size = UDim2.new(0, 200, 0, 200)
-MiscFrame.Position = UDim2.new(MainFrame.Position.X.Scale, MainFrame.Position.X.Offset + 290, MainFrame.Position.Y.Scale, MainFrame.Position.Y.Offset)
+MiscFrame.Size = UDim2.new(0, 210, 0, 230)
+MiscFrame.Position = UDim2.new(0.5, 150, 0.3, 0)
 MiscFrame.BackgroundColor3 = THEME.BG
 MiscFrame.BorderSizePixel = 3
 MiscFrame.BorderColor3 = THEME.MAIN
 MiscFrame.Active = true
 MiscFrame.Visible = false
 MiscFrame.Parent = ScreenGui
-
 local MFC = Instance.new("UICorner"); MFC.CornerRadius = UDim.new(0, 10); MFC.Parent = MiscFrame
 
 local MiscTitleBar = Instance.new("Frame")
@@ -279,7 +364,9 @@ ML:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     MiscScroll.CanvasSize = UDim2.new(0, 0, 0, ML.AbsoluteContentSize.Y + 10)
 end)
 
--- ========== DOCK ==========
+-- ============================================================
+-- DOCK BUTTON
+-- ============================================================
 local DockBtn = Instance.new("TextButton")
 DockBtn.Size = UDim2.new(0, 110, 0, 32)
 DockBtn.Position = UDim2.new(0.5, -55, 0.05, 42)
@@ -320,7 +407,9 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- Main drag
+-- ============================================================
+-- DRAG MAIN WINDOW
+-- ============================================================
 local mDrag, mStart, mStartPos = false, nil, nil
 TitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -334,15 +423,14 @@ TitleBar.InputBegan:Connect(function(input)
     end
 end)
 TitleBar.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then mDrag = false end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        mDrag = false
+    end
 end)
 UserInputService.InputChanged:Connect(function(input)
     if mDrag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
         local d = input.Position - mStart
         MainFrame.Position = UDim2.new(mStartPos.X.Scale, mStartPos.X.Offset + d.X, mStartPos.Y.Scale, mStartPos.Y.Offset + d.Y)
-        if MiscFrame and MiscFrame.Visible then
-            MiscFrame.Position = UDim2.new(MainFrame.Position.X.Scale, MainFrame.Position.X.Offset + 290, MainFrame.Position.Y.Scale, MainFrame.Position.Y.Offset)
-        end
     end
 end)
 
@@ -357,7 +445,9 @@ MiscTitleBar.InputBegan:Connect(function(input)
     end
 end)
 MiscTitleBar.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then miDrag = false end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        miDrag = false
+    end
 end)
 UserInputService.InputChanged:Connect(function(input)
     if miDrag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
@@ -367,59 +457,50 @@ UserInputService.InputChanged:Connect(function(input)
 end)
 
 MiscBtn.MouseButton1Click:Connect(function()
-    if MiscFrame.Visible then MiscFrame.Visible = false
-    else
-        MiscFrame.Visible = true
-        MiscFrame.Position = UDim2.new(MainFrame.Position.X.Scale, MainFrame.Position.X.Offset + 290, MainFrame.Position.Y.Scale, MainFrame.Position.Y.Offset)
-    end
+    MiscFrame.Visible = not MiscFrame.Visible
 end)
 MiscClose.MouseButton1Click:Connect(function() MiscFrame.Visible = false end)
 CloseBtn.MouseButton1Click:Connect(function()
     MainFrame.Visible = false; MiscFrame.Visible = false; DockBtn.Visible = true
 end)
 
--- ========== ESP FOLDER ==========
+-- ============================================================
+-- ESP FOLDER
+-- ============================================================
 local ESPFolder = Instance.new("Folder")
 ESPFolder.Name = "XyqwPiggyESP"
 ESPFolder.Parent = CoreGui
 
-local ESP = { Items = {}, Monster = {}, Players = {} }
+local ESP = { Items = {}, Monster = {}, Players = {}, Tools = {} }
 
--- ESP ITEMS
+-- ============================================================
+-- ITEM ESP
+-- ============================================================
 local function EnableItemESP()
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("ClickDetector") then
-            local parent = obj.Parent
-            if parent and parent:IsA("BasePart") then
-                local isMenu = false
-                local c = parent
-                while c do
-                    if c.Name == "MenuCameras" or c.Name == "GameFolder" then isMenu = true break end
-                    c = c.Parent
-                end
-                local hasPE = parent:FindFirstChildOfClass("ParticleEmitter") ~= nil
-                if not isMenu and hasPE and not ESP.Items[parent] then
-                    local hl = Instance.new("Highlight")
-                    hl.FillColor = Color3.fromRGB(0, 255, 255)
-                    hl.FillTransparency = 0.7
-                    hl.OutlineColor = Color3.fromRGB(0, 255, 255)
-                    hl.OutlineTransparency = 0
-                    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                    hl.Adornee = parent
-                    hl.Parent = ESPFolder
-                    ESP.Items[parent] = hl
-                end
-            end
+    for _, item in ipairs(GetRealItems()) do
+        local part = item.part
+        if not ESP.Items[part] then
+            local hl = Instance.new("Highlight")
+            hl.FillColor = THEME.ITEM
+            hl.FillTransparency = 0.7
+            hl.OutlineColor = THEME.ITEM
+            hl.OutlineTransparency = 0
+            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            hl.Adornee = part
+            hl.Parent = ESPFolder
+            ESP.Items[part] = hl
         end
     end
 end
 
 local function DisableItemESP()
-    for _, hl in pairs(ESP.Items) do if hl then hl:Destroy() end end
+    for _, hl in pairs(ESP.Items) do pcall(function() hl:Destroy() end) end
     ESP.Items = {}
 end
 
--- ESP MONSTER
+-- ============================================================
+-- MONSTER ESP (loop)
+-- ============================================================
 local function EnableMonsterESP()
     task.spawn(function()
         while State.ESP.Monster do
@@ -429,11 +510,11 @@ local function EnableMonsterESP()
                 for _, obj in ipairs(workspace:GetDescendants()) do
                     if obj:IsA("Model") then
                         local hum = obj:FindFirstChildOfClass("Humanoid")
-                        if hum and hum.Health > 0 then
-                            local plr = Players:GetPlayerFromCharacter(obj)
-                            if not plr then
-                                local oHrp = obj:FindFirstChild("HumanoidRootPart")
-                                if oHrp and (oHrp.Position - hrp.Position).Magnitude < 100 then
+                        if hum and hum.Health > 0 and not Players:GetPlayerFromCharacter(obj) then
+                            local oHrp = obj:FindFirstChild("HumanoidRootPart") or obj.PrimaryPart
+                            if oHrp then
+                                local dist = (oHrp.Position - hrp.Position).Magnitude
+                                if dist < 150 then
                                     if not ESP.Monster[obj] then
                                         local hl = Instance.new("Highlight")
                                         hl.FillColor = Color3.fromRGB(255, 0, 0)
@@ -446,7 +527,10 @@ local function EnableMonsterESP()
                                         ESP.Monster[obj] = hl
                                     end
                                 else
-                                    if ESP.Monster[obj] then ESP.Monster[obj]:Destroy(); ESP.Monster[obj] = nil end
+                                    if ESP.Monster[obj] then
+                                        pcall(function() ESP.Monster[obj]:Destroy() end)
+                                        ESP.Monster[obj] = nil
+                                    end
                                 end
                             end
                         end
@@ -455,18 +539,20 @@ local function EnableMonsterESP()
             end
             task.wait(1)
         end
-        for _, hl in pairs(ESP.Monster) do if hl then hl:Destroy() end end
+        for _, hl in pairs(ESP.Monster) do pcall(function() hl:Destroy() end) end
         ESP.Monster = {}
     end)
 end
 
 local function DisableMonsterESP()
     State.ESP.Monster = false
-    for _, hl in pairs(ESP.Monster) do if hl then hl:Destroy() end end
+    for _, hl in pairs(ESP.Monster) do pcall(function() hl:Destroy() end) end
     ESP.Monster = {}
 end
 
--- ESP PLAYERS
+-- ============================================================
+-- PLAYER ESP
+-- ============================================================
 local function EnablePlayerESP()
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LP and plr.Character then
@@ -487,7 +573,7 @@ local function EnablePlayerESP()
 end
 
 local function DisablePlayerESP()
-    for _, hl in pairs(ESP.Players) do if hl then hl:Destroy() end end
+    for _, hl in pairs(ESP.Players) do pcall(function() hl:Destroy() end) end
     ESP.Players = {}
 end
 
@@ -498,8 +584,9 @@ task.spawn(function()
     end
 end)
 
--- TOOL USAGE
-local toolHl = {}
+-- ============================================================
+-- TOOL USAGE (только Items + Doors)
+-- ============================================================
 local function EnableToolIndicator()
     task.spawn(function()
         while State.ToolIndicator do
@@ -508,40 +595,41 @@ local function EnableToolIndicator()
             if tool then
                 for _, obj in ipairs(workspace:GetDescendants()) do
                     if obj:IsA("ClickDetector") then
-                        local parent = obj.Parent
-                        if parent and parent:IsA("BasePart") then
-                            local isMenu = false
-                            local c = parent
-                            while c do
-                                if c.Name == "MenuCameras" or c.Name == "GameFolder" then isMenu = true break end
-                                c = c.Parent
+                        local part = obj.Parent
+                        if part and part:IsA("BasePart") and not IsInMenu(part) then
+                            local t = GetPartType(part)
+                            local color
+                            if t == "Item" then color = THEME.ITEM
+                            elseif t == "Door" then color = THEME.DOOR
                             end
-                            if not isMenu and not toolHl[obj] then
+                            if color and not ESP.Tools[obj] then
                                 local hl = Instance.new("Highlight")
-                                hl.FillColor = Color3.fromRGB(255, 255, 0)
+                                hl.FillColor = color
                                 hl.FillTransparency = 0.6
-                                hl.OutlineColor = Color3.fromRGB(255, 255, 0)
+                                hl.OutlineColor = color
                                 hl.OutlineTransparency = 0
                                 hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                                hl.Adornee = parent
+                                hl.Adornee = part
                                 hl.Parent = ESPFolder
-                                toolHl[obj] = hl
+                                ESP.Tools[obj] = hl
                             end
                         end
                     end
                 end
             else
-                for _, hl in pairs(toolHl) do if hl then hl:Destroy() end end
-                toolHl = {}
+                for _, hl in pairs(ESP.Tools) do pcall(function() hl:Destroy() end) end
+                ESP.Tools = {}
             end
             task.wait(1)
         end
-        for _, hl in pairs(toolHl) do if hl then hl:Destroy() end end
-        toolHl = {}
+        for _, hl in pairs(ESP.Tools) do pcall(function() hl:Destroy() end) end
+        ESP.Tools = {}
     end)
 end
 
+-- ============================================================
 -- ANTI-TRAP
+-- ============================================================
 local function EnableAntiTrap()
     task.spawn(function()
         while State.AntiTrap do
@@ -552,9 +640,10 @@ local function EnableAntiTrap()
                 for _, obj in ipairs(workspace:GetDescendants()) do
                     if obj:IsA("BasePart") and obj.CanCollide then
                         local n = obj.Name:lower()
-                        if n:find("trap") or n:find("lava") or n:find("spike") or n:find("kill") or n:find("damage") then
+                        if n:find("trap") or n:find("lava") or n:find("spike")
+                        or n:find("kill") or n:find("damage") or n:find("bear") then
                             if (obj.Position - hrp.Position).Magnitude < 6 then
-                                hrp.CFrame = hrp.CFrame + Vector3.new(0, 20, 0)
+                                hrp.CFrame = hrp.CFrame + Vector3.new(0, 25, 0)
                                 Notify("Anti-Trap: Detected!", 1)
                                 break
                             end
@@ -567,7 +656,9 @@ local function EnableAntiTrap()
     end)
 end
 
--- DELETE PIGGY
+-- ============================================================
+-- DELETE PIGGY (Visual) — только NPC с Humanoid, не игроки
+-- ============================================================
 local dPConn = nil
 local function EnableDeletePiggy()
     if dPConn then return end
@@ -576,11 +667,11 @@ local function EnableDeletePiggy()
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Model") then
                 local hum = obj:FindFirstChildOfClass("Humanoid")
-                if hum and hum.Health > 0 then
-                    local plr = Players:GetPlayerFromCharacter(obj)
-                    if not plr then
-                        pcall(function() hum.Health = 0; obj.Parent = nil end)
-                    end
+                if hum and hum.Health > 0 and not Players:GetPlayerFromCharacter(obj) then
+                    pcall(function()
+                        hum.Health = 0
+                    end)
+                    obj.Parent = nil
                 end
             end
         end
@@ -592,7 +683,9 @@ local function DisableDeletePiggy()
     if dPConn then dPConn:Disconnect(); dPConn = nil end
 end
 
--- ========== TOGGLE ==========
+-- ============================================================
+-- TOGGLE BUILDER
+-- ============================================================
 local function MakeToggle(name, getState, onToggle)
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1, -4, 0, 28)
@@ -630,17 +723,21 @@ local function MakeToggle(name, getState, onToggle)
 
     local function U() box.BackgroundColor3 = getState() and THEME.ON or THEME.OFF end
 
-    box.MouseButton1Click:Connect(function()
+    local function fire()
         onToggle(); U()
         Notify(name .. ": " .. (getState() and "ON" or "OFF"), 2)
+    end
+
+    box.MouseButton1Click:Connect(function()
+        -- проверяем что клик именно по квадратику
+        fire()
     end)
     row.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             local mp = input.Position
             local bp, bs = box.AbsolutePosition, box.AbsoluteSize
             if mp.X >= bp.X and mp.X <= bp.X + bs.X and mp.Y >= bp.Y and mp.Y <= bp.Y + bs.Y then return end
-            onToggle(); U()
-            Notify(name .. ": " .. (getState() and "ON" or "OFF"), 2)
+            fire()
         end
     end)
 end
@@ -669,32 +766,87 @@ MakeToggle("Anti-Trap", function() return State.AntiTrap end, function()
     if State.AntiTrap then EnableAntiTrap() end
 end)
 
--- ========== СПИСОК ПРЕДМЕТОВ ==========
+-- ============================================================
+-- СПИСОК ПРЕДМЕТОВ + 3D
+-- ============================================================
 local currentItems = {}
-local scanInProgress = false
 local spinningItems = {}
-local scrollBlocked = false
+local scanInProgress = false
 
-local function GetRealItems()
-    local items = {}
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("ClickDetector") then
-            local parent = obj.Parent
-            if parent and parent:IsA("BasePart") then
-                local isMenu = false
-                local c = parent
-                while c do
-                    if c.Name == "MenuCameras" or c.Name == "GameFolder" then isMenu = true break end
-                    c = c.Parent
-                end
-                local hasPE = parent:FindFirstChildOfClass("ParticleEmitter") ~= nil
-                if not isMenu and hasPE then
-                    table.insert(items, { part = parent, detector = obj })
-                end
+-- Создание 3D-модели в ViewportFrame (БЕЗ WorldModel)
+local function Create3DView(part, vpf)
+    local ok, err = pcall(function()
+        local mp = part:Clone()
+
+        -- Чистка
+        for _, ch in ipairs(mp:GetChildren()) do
+            if ch:IsA("Script") or ch:IsA("LocalScript")
+            or ch:IsA("ClickDetector") or ch:IsA("ParticleEmitter")
+            or ch:IsA("Weld") or ch:IsA("WeldConstraint") or ch:IsA("Attachment")
+            or ch:IsA("BillboardGui") or ch:IsA("SurfaceGui") or ch:IsA("Sound")
+            or ch:IsA("SelectionBox") or ch:IsA("Highlight") or ch:IsA("ForceField") then
+                ch:Destroy()
             end
         end
+
+        mp.Anchored = true
+        mp.CanCollide = false
+        mp.CanQuery = false
+        mp.CanTouch = false
+        mp.Massless = true
+        if mp:IsA("BasePart") then
+            mp.Position = Vector3.new(0, 0, 0)
+            mp.CFrame = CFrame.new(0, 0, 0)
+        end
+
+        -- Нормализация размера
+        local mesh = mp:FindFirstChildOfClass("SpecialMesh")
+        local sz = mp.Size
+        local scaleFactor = 1
+
+        if mesh then
+            -- эффективный размер = Size * mesh.Scale (для FileMesh)
+            local mx = math.max(mesh.Scale.X, mesh.Scale.Y, mesh.Scale.Z)
+            if mx > 0 then
+                scaleFactor = 1.5 / mx  -- нормализуем mesh.Scale к макс 1.5
+                mesh.Scale = Vector3.new(
+                    mesh.Scale.X * scaleFactor,
+                    mesh.Scale.Y * scaleFactor,
+                    mesh.Scale.Z * scaleFactor
+                )
+            end
+            -- и Size нормализуем к 1
+            local sm = math.max(sz.X, sz.Y, sz.Z)
+            if sm > 0 then
+                mp.Size = sz / sm
+            end
+        else
+            -- нет меша — просто нормализуем Size
+            local sm = math.max(sz.X, sz.Y, sz.Z)
+            if sm > 0 then
+                mp.Size = sz / sm
+            end
+        end
+
+        mp.Parent = vpf
+
+        -- Камера с фиксированным расстоянием
+        local cam = Instance.new("Camera")
+        cam.FieldOfView = 60
+        cam.CFrame = CFrame.new(Vector3.new(2.2, 1.5, 2.2), Vector3.new(0, 0, 0))
+        cam.Parent = vpf
+        vpf.CurrentCamera = cam
+
+        table.insert(spinningItems, mp)
+
+        -- Preload
+        task.spawn(function()
+            pcall(function() ContentProvider:PreloadAsync({mp}) end)
+        end)
+    end)
+    if not ok then
+        warn("[XyqwPiggy] 3D view error: " .. tostring(err))
     end
-    return items
 end
 
 local function TakeItem(item)
@@ -708,7 +860,7 @@ local function TakeItem(item)
     pcall(function() fireclickdetector(item.detector) end)
     task.wait(0.25)
     hrp.CFrame = saved
-    Notify("Взял: " .. GetItemName(item), 2)
+    Notify("Took: " .. GetItemName(item), 2)
 end
 
 local function RefreshItemList()
@@ -722,10 +874,12 @@ local function RefreshItemList()
 
     currentItems = GetRealItems()
 
+    StatusLabel.Text = "Items: " .. #currentItems
+
     if #currentItems == 0 then
-        Notify("Войдите в игру!", 3)
+        Notify("Join a game first!", 3)
     else
-        Notify("Найдено: " .. #currentItems .. " предметов", 2)
+        Notify("Found: " .. #currentItems .. " items", 2)
     end
 
     for i, item in ipairs(currentItems) do
@@ -737,10 +891,11 @@ local function RefreshItemList()
         row.Text = ""
         row.Parent = ItemScroll
         row.AutoButtonColor = false
+        row.ClipsDescendants = true
         local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(0, 6); rc.Parent = row
         AddStroke(row)
 
-        -- ViewportFrame БЕЗ WorldModel
+        -- ViewportFrame
         local vpf = Instance.new("ViewportFrame")
         vpf.Size = UDim2.new(0, 40, 0, 40)
         vpf.Position = UDim2.new(0, 4, 0.5, -20)
@@ -749,57 +904,22 @@ local function RefreshItemList()
         vpf.BorderColor3 = THEME.MAIN
         vpf.Parent = row
         vpf.ZIndex = 2
+        vpf.Ambient = Color3.fromRGB(180, 180, 180)
+        vpf.LightColor = Color3.fromRGB(255, 255, 255)
         local vc = Instance.new("UICorner"); vc.CornerRadius = UDim.new(0, 5); vc.Parent = vpf
         AddStroke(vpf)
 
-        -- Копия
-        local mp = item.part:Clone()
-        mp.Anchored = true
-        mp.CanCollide = false
-        mp.CanQuery = false
-        mp.CanTouch = false
-        for _, ch in ipairs(mp:GetChildren()) do
-            if ch:IsA("Script") or ch:IsA("LocalScript") or ch:IsA("ClickDetector") or ch:IsA("ParticleEmitter") then
-                ch:Destroy()
-            end
-        end
-
-        -- Нормализация размера
-        local orig = mp.Size
-        local maxD = math.max(orig.X, orig.Y, orig.Z)
-        if maxD > 0 and maxD < 1 then
-            local s = 2 / maxD
-            mp.Size = orig * s
-            local mesh = mp:FindFirstChildOfClass("SpecialMesh")
-            if mesh then mesh.Scale = mesh.Scale * s end
-        elseif maxD > 10 then
-            mp.Size = orig * (5 / maxD)
-        end
-
-        mp.Parent = vpf
-
-        -- Камера
-        local cam = Instance.new("Camera")
-        cam.FieldOfView = 70
-        local sz = mp.Size
-        local dist = math.max(sz.X, sz.Y, sz.Z) * 2.5
-        if dist < 2 then dist = 2 end
-        cam.CFrame = CFrame.new(Vector3.new(dist, dist * 0.7, dist), Vector3.new(0, 0, 0))
-        vpf.CurrentCamera = cam
-        cam.Parent = vpf
-
-        task.spawn(function()
-            pcall(function() ContentProvider:PreloadAsync({mp}) end)
-        end)
-
-        table.insert(spinningItems, mp)
+        Create3DView(item.part, vpf)
 
         -- Имя
+        local itemName = GetItemName(item)
+        row:SetAttribute("ItemName", itemName)
+
         local nl = Instance.new("TextLabel")
         nl.Size = UDim2.new(1, -55, 1, 0)
         nl.Position = UDim2.new(0, 50, 0, 0)
         nl.BackgroundTransparency = 1
-        nl.Text = GetItemName(item)
+        nl.Text = itemName
         nl.TextColor3 = THEME.MAIN
         nl.TextScaled = true
         nl.Font = Enum.Font.GothamBold
@@ -808,63 +928,102 @@ local function RefreshItemList()
         nl.Parent = row
         AddTextStroke(nl)
 
-        local pressStart = 0
+        -- =====================================================
+        -- ЖЁСТКАЯ ЗАЩИТА ОТ СКРОЛЛА
+        -- =====================================================
+        local pressStart, pressPos, moved = 0, nil, false
+
         row.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
                 pressStart = tick()
+                pressPos = input.Position
+                moved = false
             end
         end)
-        row.MouseButton1Click:Connect(function()
-            if scrollBlocked then return end
-            if tick() - pressStart > 0.5 then return end
-            TakeItem(item)
+
+        row.InputChanged:Connect(function(input)
+            if pressPos and (input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch) then
+                local d = (input.Position - pressPos).Magnitude
+                if d > 6 then moved = true end
+            end
+        end)
+
+        row.InputEnded:Connect(function(input)
+            if not pressPos then return end
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+                local held = tick() - pressStart
+                if not moved and held < 0.5 then
+                    TakeItem(item)
+                end
+                pressPos = nil
+            end
         end)
     end
+
     scanInProgress = false
 end
-
--- Защита от скролла
-ItemScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
-    scrollBlocked = true
-    task.delay(0.3, function() scrollBlocked = false end)
-end)
-MiscScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
-    scrollBlocked = true
-    task.delay(0.3, function() scrollBlocked = false end)
-end)
 
 -- Вращение 3D
 RunService.RenderStepped:Connect(function(dt)
     for _, model in ipairs(spinningItems) do
         if model and model.Parent then
-            model.CFrame = model.CFrame * CFrame.Angles(0, math.rad(60 * dt), 0)
+            pcall(function()
+                model.CFrame = model.CFrame * CFrame.Angles(0, math.rad(60 * dt), 0)
+            end)
         end
     end
 end)
 
+-- ============================================================
+-- SEARCH
+-- ============================================================
+local function FilterItems(query)
+    query = (query or ""):lower()
+    for _, row in ipairs(ItemScroll:GetChildren()) do
+        if row:IsA("TextButton") then
+            local name = (row:GetAttribute("ItemName") or ""):lower()
+            if query == "" or name:find(query, 1, true) then
+                row.Visible = true
+            else
+                row.Visible = false
+            end
+        end
+    end
+end
+
+SearchBar:GetPropertyChangedSignal("Text"):Connect(function()
+    FilterItems(SearchBar.Text)
+end)
+
+-- ============================================================
+-- SCAN BUTTON
+-- ============================================================
 ScanBtn.MouseButton1Click:Connect(function()
-    Notify("Сканирование...", 2)
+    Notify("Scanning...", 2)
     task.wait(0.3)
     RefreshItemList()
 end)
 
+-- Первый запуск + авто-обновление
 task.spawn(function()
     task.wait(1)
     RefreshItemList()
-end)
 
--- Roblox-сообщение если пусто
-task.spawn(function()
+    -- авто-рефреш если пусто
     while true do
         task.wait(10)
         if #currentItems == 0 then
-            Notify("Войдите в игру!", 3)
             RefreshItemList()
         end
     end
 end)
 
--- ========== RESIZE ==========
+-- ============================================================
+-- RESIZE
+-- ============================================================
 local RS = Instance.new("TextButton")
 RS.Size = UDim2.new(0, 14, 0, 14)
 RS.Position = UDim2.new(1, -16, 1, -16)
@@ -891,13 +1050,19 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then rsz = false end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        rsz = false
+    end
 end)
 
+-- ============================================================
+-- CLEANUP
+-- ============================================================
 game:BindToClose(function()
     if dPConn then dPConn:Disconnect() end
-    ESPFolder:Destroy()
+    pcall(function() ESPFolder:Destroy() end)
 end)
 
+-- ============================================================
 print("[XyqwPiggy v" .. VERSION .. "] Loaded!")
 print("[XyqwPiggy v" .. VERSION .. "] Made by Xyqwerq")
