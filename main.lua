@@ -1,8 +1,9 @@
--- ========== XyqwPiggy v3.0 UNIVERSAL ==========
+-- ========== XyqwPiggy v3.2 UNIVERSAL ==========
 -- Piggy Script | made by Xyqwerq
--- Поддержка Book 1, Book 2 и других Piggy-игр
+-- Book 1 (4623386862) + Book 2 (5661005779)
+-- Delete Piggy с восстановлением | Красный текст
 
-local VERSION = "3.0"
+local VERSION = "3.2"
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
@@ -30,15 +31,17 @@ local GAME_CONFIGS = {
             ["rbxassetid://456878024"] = true,
         },
     },
-    -- Book 2 — заглушка (обновим по диагностике)
-    [5099979400] = {  -- предполагаемый PlaceId Book 2 (уточним)
+    [5661005779] = {
         name = "Piggy Book 2",
-        meshNames = {},
-        keyMeshIds = {},
+        meshNames = {
+            -- Заполним после диагностики Book 2
+        },
+        keyMeshIds = {
+            -- Заполним после диагностики Book 2
+        },
     },
 }
 
--- Авто-детект текущей игры
 local CURRENT_GAME = GAME_CONFIGS[game.PlaceId]
 if not CURRENT_GAME then
     CURRENT_GAME = {
@@ -89,7 +92,7 @@ local function AddTextStroke(label)
 end
 
 -- ============================================================
--- GET ITEM NAME (универсальная)
+-- GET ITEM NAME
 -- ============================================================
 local function GetKeyNameByColor(c)
     local h, s, v = Color3.toHSV(c)
@@ -113,7 +116,6 @@ local function GetItemName(item)
     local mesh = part:FindFirstChildOfClass("SpecialMesh")
     local meshId = mesh and mesh.MeshId or nil
 
-    -- 1) Ключи (по keyMeshIds текущей игры) — цвет через HSL
     if meshId and CURRENT_GAME.keyMeshIds[meshId] then
         local pe = part:FindFirstChildOfClass("ParticleEmitter")
         if pe and pe.Color and pe.Color.Keypoints and #pe.Color.Keypoints > 0 then
@@ -122,44 +124,37 @@ local function GetItemName(item)
         return "Key"
     end
 
-    -- 2) MeshId → имя из конфига
     if meshId and CURRENT_GAME.meshNames[meshId] then
         return CURRENT_GAME.meshNames[meshId]
     end
 
-    -- 3) Fallback — по имени части
     local n = part.Name
     if n and n ~= "" and not n:match("^%-?%d+$") then
         return n
     end
 
-    -- 4) По MeshId ID
     if meshId then
         local id = meshId:match("id=(%d+)") or meshId:match("assetid://(%d+)")
         if id then return "Item (" .. id .. ")" end
     end
 
-    -- 5) По цвету ParticleEmitter (для неизвестных игр)
     local pe = part:FindFirstChildOfClass("ParticleEmitter")
     if pe and pe.Color and pe.Color.Keypoints and #pe.Color.Keypoints > 0 then
         local c = pe.Color.Keypoints[1].Value
         local h, s, v = Color3.toHSV(c)
-        if s >= 0.3 then
-            return GetKeyNameByColor(c)
-        end
+        if s >= 0.3 then return GetKeyNameByColor(c) end
     end
 
     return "Item"
 end
 
 -- ============================================================
--- MENU FILTER (универсальный)
+-- MENU FILTER
 -- ============================================================
 local MENU_NAMES = {
     MenuCameras = true, MainMenuForest = true, MainMenuScreen = true,
     ItemsScreen = true, ItemsFocus = true, ItemsCamera = true,
     MenuPositions = true, MenuStorage = true, AbilityMenuStorage = true,
-    MainMenuScreen = true,
 }
 local function IsInMenu(part)
     local c = part
@@ -179,7 +174,7 @@ local SAFE_KEYWORDS = {
     "safe", "container", "locker", "box", "chest", "cabinet",
     "crate", "drawer", "vault", "storage", "bin", "bag",
     "suitcase", "briefcase", "fridge", "closet", "store",
-    "shelf", "rack", "cage", "cell", "cage",
+    "shelf", "rack", "cage", "cell",
 }
 
 local function IsInsideSafe(part)
@@ -197,25 +192,19 @@ local function IsInsideSafe(part)
 end
 
 -- ============================================================
--- IS REAL ITEM (универсальная)
+-- IS REAL ITEM
 -- ============================================================
 local function IsRealItem(part)
-    -- ParticleEmitter включён
     local pe = part:FindFirstChildOfClass("ParticleEmitter")
     if pe and pe.Enabled then return true end
-
-    -- ItemPickupScript
     for _, ch in ipairs(part:GetChildren()) do
         if ch:IsA("Script") and ch.Name == "ItemPickupScript" then return true end
     end
-
-    -- Внутри сейфа + ClickDetector
     local isSafe = IsInsideSafe(part)
     if isSafe then
         local cd = part:FindFirstChildOfClass("ClickDetector")
         if cd then return true end
     end
-
     return false
 end
 
@@ -764,26 +753,77 @@ local function EnableAntiTrap()
     end)
 end
 
+-- ============================================================
+-- DELETE PIGGY (с восстановлением)
+-- ============================================================
 local dPConn = nil
+local dPSaved = {}
+
 local function EnableDeletePiggy()
     if dPConn then return end
     State.DeletePiggy = true
+    dPSaved = {}
+
     dPConn = RunService.Heartbeat:Connect(function()
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Model") then
                 local hum = obj:FindFirstChildOfClass("Humanoid")
-                if hum and hum.Health > 0 and not Players:GetPlayerFromCharacter(obj) then
-                    pcall(function() hum.Health = 0 end)
+                if hum and not Players:GetPlayerFromCharacter(obj) and obj.Parent ~= nil then
+                    if not dPSaved[obj] then
+                        local savedParts = {}
+                        for _, part in ipairs(obj:GetDescendants()) do
+                            if part:IsA("BasePart") then
+                                savedParts[part] = {
+                                    cframe = part.CFrame,
+                                    anchored = part.Anchored,
+                                    canCollide = part.CanCollide,
+                                    transparency = part.Transparency,
+                                }
+                            end
+                        end
+                        dPSaved[obj] = {
+                            health = hum.Health,
+                            maxHealth = hum.MaxHealth,
+                            parent = obj.Parent,
+                            parts = savedParts,
+                        }
+                    end
+                    pcall(function() hum.Health = 0; hum.MaxHealth = 0 end)
                     pcall(function() obj.Parent = nil end)
                 end
             end
         end
     end)
+
+    Notify("Delete Piggy: ON", 2)
 end
 
 local function DisableDeletePiggy()
+    if not State.DeletePiggy then return end
     State.DeletePiggy = false
     if dPConn then dPConn:Disconnect(); dPConn = nil end
+
+    for obj, data in pairs(dPSaved) do
+        pcall(function()
+            for part, pd in pairs(data.parts) do
+                if part then
+                    part.CFrame = pd.cframe
+                    part.Anchored = pd.anchored
+                    part.CanCollide = pd.canCollide
+                    part.Transparency = pd.transparency
+                end
+            end
+            local hum = obj:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum.MaxHealth = data.maxHealth
+                hum.Health = data.health
+            end
+            if data.parent then obj.Parent = data.parent end
+        end)
+    end
+
+    dPSaved = {}
+    Notify("Delete Piggy: OFF (restored)", 2)
 end
 
 -- ============================================================
@@ -912,11 +952,10 @@ local function Create3DView(part, vpf)
     pcall(function()
         local world = Instance.new("WorldModel")
         world.Parent = vpf
-
         local model = Instance.new("Model")
         model.Parent = world
-
         local mp = part:Clone()
+
         for _, ch in ipairs(mp:GetChildren()) do
             if ch:IsA("Script") or ch:IsA("LocalScript")
             or ch:IsA("ClickDetector") or ch:IsA("ParticleEmitter")
@@ -947,10 +986,7 @@ local function Create3DView(part, vpf)
             local mesh = mp:FindFirstChildOfClass("SpecialMesh")
             if mesh then
                 local sz = mp.Size
-                local effX = math.abs(sz.X * mesh.Scale.X)
-                local effY = math.abs(sz.Y * mesh.Scale.Y)
-                local effZ = math.abs(sz.Z * mesh.Scale.Z)
-                local mE = math.max(effX, effY, effZ)
+                local mE = math.max(math.abs(sz.X * mesh.Scale.X), math.abs(sz.Y * mesh.Scale.Y), math.abs(sz.Z * mesh.Scale.Z))
                 if mE > 0.001 then
                     local k = 3.0 / mE
                     mesh.Scale = Vector3.new(mesh.Scale.X * k, mesh.Scale.Y * k, mesh.Scale.Z * k)
@@ -1148,7 +1184,10 @@ function RefreshItemList()
         else
             row:SetAttribute("ItemName", GetItemName(item))
             local nl = row:FindFirstChild("ItemNameLabel")
-            if nl then nl.Text = row:GetAttribute("ItemName") end
+            if nl then
+                nl.Text = row:GetAttribute("ItemName")
+                nl.TextColor3 = THEME.MAIN
+            end
         end
     end
 
@@ -1159,7 +1198,6 @@ function RefreshItemList()
     scanInProgress = false
 end
 
--- Spin 3D
 RunService.RenderStepped:Connect(function(dt)
     for _, model in ipairs(spinningModels) do
         if model and model.Parent then
@@ -1246,6 +1284,24 @@ end)
 -- CLEANUP
 -- ============================================================
 game:BindToClose(function()
+    for obj, data in pairs(dPSaved) do
+        pcall(function()
+            for part, pd in pairs(data.parts) do
+                if part then
+                    part.CFrame = pd.cframe
+                    part.Anchored = pd.anchored
+                    part.CanCollide = pd.canCollide
+                    part.Transparency = pd.transparency
+                end
+            end
+            local hum = obj:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum.MaxHealth = data.maxHealth
+                hum.Health = data.health
+            end
+            if data.parent then obj.Parent = data.parent end
+        end)
+    end
     if dPConn then dPConn:Disconnect() end
     pcall(function() ESPFolder:Destroy() end)
 end)
@@ -1254,4 +1310,4 @@ print("[XyqwPiggy v" .. VERSION .. "] Loaded!")
 print("[XyqwPiggy v" .. VERSION .. "] Game: " .. CURRENT_GAME.name .. " (" .. game.PlaceId .. ")")
 print("[XyqwPiggy v" .. VERSION .. "] Made by Xyqwerq")
 
-Notify("Loaded for: " .. CURRENT_GAME.name, 4)
+Notify("Loaded: " .. CURRENT_GAME.name, 4)
