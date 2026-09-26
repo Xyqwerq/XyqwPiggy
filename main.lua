@@ -956,7 +956,7 @@ function RefreshItemList()
         row.Size = UDim2.new(1, -5, 0, 50)
         row.BackgroundColor3 = THEME.DARK
         row.BorderSizePixel = 1
-        row.BorderColor3 = THEME.ITEM
+        row.BorderColor3 = THEME.MAIN
         row.Text = ""
         row.Parent = ItemScroll
         row.AutoButtonColor = false
