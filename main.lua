@@ -1,8 +1,8 @@
--- ========== XyqwPiggy v2.0 ==========
+-- ========== XyqwPiggy v2.3 ==========
 -- Piggy Script | made by Xyqwerq
--- WorldModel 3D, click-catcher, all items, input-based toggles
+-- Только ITEMS. Двери убраны. Подобранные скрыты.
 
-local VERSION = "2.0"
+local VERSION = "2.3"
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
@@ -20,12 +20,8 @@ local THEME = {
     OFF    = Color3.fromRGB(220, 0, 0),
     STROKE = Color3.fromRGB(120, 0, 0),
     ITEM   = Color3.fromRGB(0, 255, 255),
-    DOOR   = Color3.fromRGB(255, 220, 0),
 }
 
--- ============================================================
--- NOTIFY
--- ============================================================
 local function Notify(text, duration)
     duration = duration or 2
     pcall(function()
@@ -35,9 +31,6 @@ local function Notify(text, duration)
     end)
 end
 
--- ============================================================
--- HELPERS
--- ============================================================
 local function AddStroke(parent, color, thickness)
     local s = Instance.new("UIStroke")
     s.Color = color or THEME.STROKE
@@ -68,73 +61,103 @@ local MESH_NAMES = {
     ["http://www.roblox.com/asset/?id=60791940"]  = "Gear",
 }
 
+-- ============================================================
+-- GET ITEM NAME (расширенный, безопасный)
+-- ============================================================
 local function GetItemName(item)
     local part = item.part
-    if not part then return "Item" end
+    if not part then return "Unknown" end
 
+    -- 1) ParticleEmitter цвет → ключи (безопасно через Keypoints)
     local pe = part:FindFirstChildOfClass("ParticleEmitter")
-    if pe then
-        local c = pe.Color
-        if c.R > 0.8 and c.G < 0.3 and c.B < 0.3 then return "Red Key" end
-        if c.B > 0.8 and c.R < 0.3 and c.G < 0.3 then return "Blue Key" end
-        if c.G > 0.8 and c.R < 0.3 and c.B < 0.3 then return "Green Key" end
-        if c.B > 0.8 and c.G > 0.8 and c.R < 0.3 then return "Cyan Key" end
-        if c.R > 0.8 and c.G > 0.8 and c.B < 0.3 then return "Yellow Key" end
-        if c.R > 0.8 and c.G > 0.3 and c.B > 0.8 then return "Pink Key" end
-        if c.R > 0.8 and c.G > 0.4 and c.B < 0.2 then return "Orange Key" end
+    if pe and pe.Color and pe.Color.Keypoints and #pe.Color.Keypoints > 0 then
+        local c = pe.Color.Keypoints[1].Value
+        if c.R > 0.9 and c.G < 0.3 and c.B < 0.3 then return "Red Key" end
+        if c.B > 0.9 and c.R < 0.3 and c.G < 0.3 then return "Blue Key" end
+        if c.G > 0.9 and c.R < 0.3 and c.B < 0.3 then return "Green Key" end
+        if c.B > 0.9 and c.G > 0.9 and c.R < 0.3 then return "Cyan Key" end
+        if c.R > 0.9 and c.G > 0.9 and c.B < 0.3 then return "Yellow Key" end
+        if c.R > 0.9 and c.G > 0.3 and c.B < 0.1 then return "Orange Key" end
+        if c.R > 0.5 and c.G < 0.4 and c.B > 0.9 then return "Purple Key" end
+        if c.R > 0.9 and c.G > 0.5 and c.B > 0.9 then return "Pink Key" end
+        if c.R > 0.9 and c.G > 0.9 and c.B > 0.9 then return "White Key" end
     end
 
+    -- 2) MeshId
     local mesh = part:FindFirstChildOfClass("SpecialMesh")
     if mesh and mesh.MeshId and MESH_NAMES[mesh.MeshId] then
         return MESH_NAMES[mesh.MeshId]
     end
 
-    -- Door fallback
-    if item.type == "Door" then return "Door" end
+    -- 3) Имя части (если осмысленное)
+    local n = part.Name
+    if n and n ~= "" and not n:match("^%-?%d+$") then
+        return n
+    end
 
     return "Item"
 end
 
 -- ============================================================
--- MENU CHECK
+-- MENU FILTER
 -- ============================================================
 local MENU_NAMES = {
     MenuCameras = true, MainMenuForest = true, MainMenuScreen = true,
     ItemsScreen = true, ItemsFocus = true, ItemsCamera = true,
-    StationCameras = true, HouseCameras = true, GalleryCameras = true,
-    ForestCameras = true, SchoolCameras = true, HospitalCameras = true,
-    MetroCameras = true, MallCameras = true, CarnivalCameras = true,
-    OutpostCameras = true, DistortedMemoryCameras = true, PlantCameras = true,
-    CityCameras = true, HouseEXECameras = true, MenuPositions = true,
+    MenuPositions = true,
 }
-
 local function IsInMenu(part)
     local c = part
-    while c do
+    local depth = 0
+    while c and depth < 8 do
         if MENU_NAMES[c.Name] then return true end
         c = c.Parent
+        depth = depth + 1
     end
     return false
 end
 
 -- ============================================================
--- PART TYPE
+-- IS REAL ITEM (только реальные подбираемые предметы)
 -- ============================================================
-local function GetPartType(part)
-    if part:FindFirstChildOfClass("ParticleEmitter") then return "Item" end
+local KNOWN_ITEM_MESHES = {
+    ["rbxassetid://725833400"] = true,                     -- Hammer
+    ["rbxassetid://456878024"] = true,                     -- Key
+    ["rbxassetid://524706126"] = true,                     -- Gear
+    ["http://www.roblox.com/asset/?id=16884681"] = true,   -- Tool
+    ["http://www.roblox.com/asset/?id=16198309"] = true,   -- Plank
+    ["http://www.roblox.com/asset/?id=72012879"] = true,   -- Battery
+    ["rbxassetid://6714051581"] = true,                    -- Note
+    ["http://www.roblox.com/asset/?id=60791940"] = true,   -- Gear
+}
+
+-- Является ли часть настоящим ПОДБИРАЕМЫМ предметом
+local function IsRealItem(part)
+    -- 1) ParticleEmitter ВКЛЮЧЁН → точно предмет в игре
+    local pe = part:FindFirstChildOfClass("ParticleEmitter")
+    if pe and pe.Enabled then return true end
+    -- 2) ItemPickupScript
     for _, ch in ipairs(part:GetChildren()) do
-        if ch:IsA("Script") and ch.Name == "ItemPickupScript" then return "Item" end
+        if ch:IsA("Script") and ch.Name == "ItemPickupScript" then return true end
     end
-    for _, ch in ipairs(part:GetChildren()) do
-        if ch:IsA("Script") and ch.Name:match("^%-?%d+$") then return "Door" end
-    end
-    local mesh = part:FindFirstChildOfClass("SpecialMesh")
-    if mesh and mesh.MeshId and MESH_NAMES[mesh.MeshId] then return "Item" end
-    return "Unknown"
+    return false
+end
+
+-- Уже подобран / невидим / нельзя взять
+local function IsAlreadyPickedUp(part)
+    -- Невидимый
+    if part.Transparency >= 1 then return true end
+    -- ParticleEmitter выключен (значит подобрали)
+    local pe = part:FindFirstChildOfClass("ParticleEmitter")
+    if pe and not pe.Enabled then return true end
+    -- MaxActivationDistance = 0 (нельзя кликнуть)
+    local cd = part:FindFirstChildOfClass("ClickDetector")
+    if cd and cd.MaxActivationDistance <= 0 then return true end
+    return false
 end
 
 -- ============================================================
--- GET ALL CLICKDETECTORS (Items + Doors)
+-- GET LIST ITEMS (ТОЛЬКО реальные подбираемые предметы)
 -- ============================================================
 local function GetListItems()
     local items = {}
@@ -142,10 +165,11 @@ local function GetListItems()
         if obj:IsA("ClickDetector") then
             local part = obj.Parent
             if part and part:IsA("BasePart") and not IsInMenu(part) then
-                local ptype = GetPartType(part)
-                if ptype == "Item" or ptype == "Door" then
+                if IsRealItem(part) and not IsAlreadyPickedUp(part) then
                     table.insert(items, {
-                        part = part, detector = obj, type = ptype
+                        part = part,
+                        detector = obj,
+                        type = "Item",
                     })
                 end
             end
@@ -162,7 +186,6 @@ local State = {
     ToolIndicator = false,
     AntiTrap = false,
     DeletePiggy = false,
-    ShowDoors = true,
 }
 
 -- ============================================================
@@ -272,7 +295,7 @@ local SC = Instance.new("UICorner"); SC.CornerRadius = UDim.new(0, 6); SC.Parent
 AddStroke(SearchBar); AddTextStroke(SearchBar)
 
 local ItemScroll = Instance.new("ScrollingFrame")
-ItemScroll.Size = UDim2.new(1, -20, 1, -180)
+ItemScroll.Size = UDim2.new(1, -20, 1, -140)
 ItemScroll.Position = UDim2.new(0, 10, 0, 66)
 ItemScroll.BackgroundTransparency = 1
 ItemScroll.BorderSizePixel = 0
@@ -290,8 +313,8 @@ ItemLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
 end)
 
 local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Size = UDim2.new(1, -20, 0, 14)
-StatusLabel.Position = UDim2.new(0, 10, 1, -88)
+StatusLabel.Size = UDim2.new(1, -20, 0, 16)
+StatusLabel.Position = UDim2.new(0, 10, 1, -68)
 StatusLabel.BackgroundTransparency = 1
 StatusLabel.Text = "Items: 0"
 StatusLabel.TextColor3 = THEME.SUB
@@ -300,25 +323,9 @@ StatusLabel.Font = Enum.Font.Gotham
 StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
 StatusLabel.Parent = MainFrame
 
--- Show Doors toggle (небольшая кнопка)
-local ShowDoorsBtn = Instance.new("TextButton")
-ShowDoorsBtn.Size = UDim2.new(0, 90, 0, 20)
-ShowDoorsBtn.Position = UDim2.new(1, -100, 1, -90)
-ShowDoorsBtn.BackgroundColor3 = THEME.DARK
-ShowDoorsBtn.TextColor3 = THEME.MAIN
-ShowDoorsBtn.Text = "Doors: ON"
-ShowDoorsBtn.TextSize = 11
-ShowDoorsBtn.Font = Enum.Font.GothamBold
-ShowDoorsBtn.BorderSizePixel = 1
-ShowDoorsBtn.BorderColor3 = THEME.MAIN
-ShowDoorsBtn.Parent = MainFrame
-ShowDoorsBtn.AutoButtonColor = false
-local SDB = Instance.new("UICorner"); SDB.CornerRadius = UDim.new(0, 5); SDB.Parent = ShowDoorsBtn
-AddStroke(ShowDoorsBtn); AddTextStroke(ShowDoorsBtn)
-
 local ScanBtn = Instance.new("TextButton")
 ScanBtn.Size = UDim2.new(0, 140, 0, 32)
-ScanBtn.Position = UDim2.new(0.5, -70, 1, -58)
+ScanBtn.Position = UDim2.new(0.5, -70, 1, -42)
 ScanBtn.BackgroundColor3 = THEME.BG
 ScanBtn.TextColor3 = THEME.MAIN
 ScanBtn.Text = "Scan"
@@ -516,22 +523,17 @@ ESPFolder.Parent = CoreGui
 local ESP = { Items = {}, Monster = {}, Players = {}, Tools = {} }
 
 local function EnableItemESP()
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("ClickDetector") then
-            local part = obj.Parent
-            if part and part:IsA("BasePart") and not IsInMenu(part) then
-                if GetPartType(part) == "Item" and not ESP.Items[part] then
-                    local hl = Instance.new("Highlight")
-                    hl.FillColor = THEME.ITEM
-                    hl.FillTransparency = 0.7
-                    hl.OutlineColor = THEME.ITEM
-                    hl.OutlineTransparency = 0
-                    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                    hl.Adornee = part
-                    hl.Parent = ESPFolder
-                    ESP.Items[part] = hl
-                end
-            end
+    for _, item in ipairs(GetListItems()) do
+        if not ESP.Items[item.part] then
+            local hl = Instance.new("Highlight")
+            hl.FillColor = THEME.ITEM
+            hl.FillTransparency = 0.7
+            hl.OutlineColor = THEME.ITEM
+            hl.OutlineTransparency = 0
+            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            hl.Adornee = item.part
+            hl.Parent = ESPFolder
+            ESP.Items[item.part] = hl
         end
     end
 end
@@ -627,26 +629,17 @@ local function EnableToolIndicator()
             local char = LP.Character
             local tool = char and char:FindFirstChildOfClass("Tool")
             if tool then
-                for _, obj in ipairs(workspace:GetDescendants()) do
-                    if obj:IsA("ClickDetector") then
-                        local part = obj.Parent
-                        if part and part:IsA("BasePart") and not IsInMenu(part) then
-                            local t = GetPartType(part)
-                            local color
-                            if t == "Item" then color = THEME.ITEM
-                            elseif t == "Door" then color = THEME.DOOR end
-                            if color and not ESP.Tools[obj] then
-                                local hl = Instance.new("Highlight")
-                                hl.FillColor = color
-                                hl.FillTransparency = 0.6
-                                hl.OutlineColor = color
-                                hl.OutlineTransparency = 0
-                                hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                                hl.Adornee = part
-                                hl.Parent = ESPFolder
-                                ESP.Tools[obj] = hl
-                            end
-                        end
+                for _, item in ipairs(GetListItems()) do
+                    if not ESP.Tools[item.part] then
+                        local hl = Instance.new("Highlight")
+                        hl.FillColor = THEME.ITEM
+                        hl.FillTransparency = 0.6
+                        hl.OutlineColor = THEME.ITEM
+                        hl.OutlineTransparency = 0
+                        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                        hl.Adornee = item.part
+                        hl.Parent = ESPFolder
+                        ESP.Tools[item.part] = hl
                     end
                 end
             else
@@ -709,7 +702,7 @@ local function DisableDeletePiggy()
 end
 
 -- ============================================================
--- TOGGLE (input-based, НЕ MouseButton1Click)
+-- TOGGLE (input-based)
 -- ============================================================
 local function MakeToggle(name, getState, onToggle)
     local row = Instance.new("Frame")
@@ -752,7 +745,6 @@ local function MakeToggle(name, getState, onToggle)
         Notify(name .. ": " .. (getState() and "ON" or "OFF"), 2)
     end
 
-    -- Click-catcher overlay (покрывает строку)
     local catcher = Instance.new("TextButton")
     catcher.Size = UDim2.new(1, 0, 1, 0)
     catcher.Position = UDim2.new(0, 0, 0, 0)
@@ -789,9 +781,7 @@ local function MakeToggle(name, getState, onToggle)
         or input.UserInputType == Enum.UserInputType.Touch then
             tracking = false
             local held = tick() - pressStart
-            -- Разрешаем клик только если: не двигали, короткое нажатие, и не было недавнего скролла
             if not moved and held < 0.5 and (tick() - lastScrollMisc) > 0.3 then
-                -- Проверим что mouse up над catcher
                 local mp = input.Position
                 local cp, cs = catcher.AbsolutePosition, catcher.AbsoluteSize
                 if mp.X >= cp.X and mp.X <= cp.X + cs.X and mp.Y >= cp.Y and mp.Y <= cp.Y + cs.Y then
@@ -835,16 +825,13 @@ local spinningModels = {}
 local scanInProgress = false
 
 local function Create3DView(part, vpf)
-    local success, err = pcall(function()
-        -- WorldModel
+    pcall(function()
         local world = Instance.new("WorldModel")
         world.Parent = vpf
 
-        -- Model wrapper
         local model = Instance.new("Model")
         model.Parent = world
 
-        -- Clone
         local mp = part:Clone()
         for _, ch in ipairs(mp:GetChildren()) do
             if ch:IsA("Script") or ch:IsA("LocalScript")
@@ -853,8 +840,11 @@ local function Create3DView(part, vpf)
             or ch:IsA("BillboardGui") or ch:IsA("SurfaceGui") or ch:IsA("Sound")
             or ch:IsA("SelectionBox") or ch:IsA("Highlight") or ch:IsA("ForceField")
             or ch:IsA("Fire") or ch:IsA("Smoke") or ch:IsA("Sparkles")
-            or ch:IsA("PointLight") or ch:IsA("SpotLight") or ch:IsA("SurfaceLight") then
-                ch:Destroy()
+            or ch:IsA("PointLight") or ch:IsA("SpotLight") or ch:IsA("SurfaceLight")
+            or ch:IsA("Decal") or ch:IsA("Texture") then
+                if not ch:IsA("Decal") and not ch:IsA("Texture") then
+                    ch:Destroy()
+                end
             end
         end
 
@@ -868,13 +858,11 @@ local function Create3DView(part, vpf)
         end
         mp.Parent = model
 
-        -- Scale to fixed size using Model API (учитывает mesh visual)
         local extents = model:GetExtentsSize()
         local maxE = math.max(extents.X, extents.Y, extents.Z)
         if maxE > 0.001 then
-            model:ScaleTo(4)  -- target 4 studs largest dimension
+            model:ScaleTo(3)
         else
-            -- fallback: normalise mesh.Scale вручную
             local mesh = mp:FindFirstChildOfClass("SpecialMesh")
             if mesh then
                 local sz = mp.Size
@@ -883,29 +871,24 @@ local function Create3DView(part, vpf)
                 local effZ = math.abs(sz.Z * mesh.Scale.Z)
                 local mE = math.max(effX, effY, effZ)
                 if mE > 0.001 then
-                    local k = 4.0 / mE
+                    local k = 3.0 / mE
                     mesh.Scale = Vector3.new(mesh.Scale.X * k, mesh.Scale.Y * k, mesh.Scale.Z * k)
                 end
             end
         end
 
-        -- Re-center after scale
         if mp:IsA("BasePart") then
             mp.CFrame = CFrame.new(0, 0, 0)
         end
 
-        -- Camera
         local cam = Instance.new("Camera")
         cam.FieldOfView = 40
-        cam.CFrame = CFrame.new(Vector3.new(4.5, 3.2, 4.5), Vector3.new(0, 0, 0))
+        cam.CFrame = CFrame.new(Vector3.new(4, 3, 4), Vector3.new(0, 0, 0))
         cam.Parent = vpf
         vpf.CurrentCamera = cam
 
         table.insert(spinningModels, mp)
     end)
-    if not success then
-        warn("[XyqwPiggy] 3D error: " .. tostring(err))
-    end
 end
 
 -- ============================================================
@@ -918,35 +901,17 @@ local function TakeItem(item)
     if not hrp then Notify("No HRP!", 2) return end
 
     local saved = hrp.CFrame
-
-    -- Extend range
     pcall(function() item.detector.MaxActivationDistance = math.huge end)
-
-    -- Teleport to part
     hrp.CFrame = CFrame.new(item.part.Position + Vector3.new(0, 3, 0))
     task.wait(0.3)
 
-    -- Try to fire
     local fired = false
     pcall(function()
-        if typeof(fireclickdetector) == "function" then
+        if fireclickdetector then
             fireclickdetector(item.detector)
             fired = true
         end
     end)
-
-    -- Fallback via Remote
-    if not fired then
-        pcall(function()
-            local rem = game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
-            if rem then
-                if rem:FindFirstChild("DoorInteract_Event") then
-                    rem.DoorInteract_Event:FireServer(item.part)
-                    fired = true
-                end
-            end
-        end)
-    end
 
     task.wait(0.25)
     hrp.CFrame = saved
@@ -956,12 +921,19 @@ local function TakeItem(item)
     else
         Notify("Cannot take: " .. GetItemName(item), 2)
     end
+
+    -- Автообновление списка через 0.5 сек
+    task.delay(0.5, function()
+        if not scanInProgress then
+            RefreshItemList()
+        end
+    end)
 end
 
 -- ============================================================
 -- REFRESH LIST
 -- ============================================================
-local function RefreshItemList()
+function RefreshItemList()
     if scanInProgress then return end
     scanInProgress = true
 
@@ -970,26 +942,13 @@ local function RefreshItemList()
     end
     spinningModels = {}
 
-    local all = GetListItems()
-    local filtered = {}
-    for _, it in ipairs(all) do
-        if it.type == "Item" or (it.type == "Door" and State.ShowDoors) then
-            table.insert(filtered, it)
-        end
-    end
-    currentItems = filtered
-
-    local itemCount, doorCount = 0, 0
-    for _, it in ipairs(currentItems) do
-        if it.type == "Item" then itemCount = itemCount + 1
-        else doorCount = doorCount + 1 end
-    end
-    StatusLabel.Text = "Items: " .. itemCount .. " | Doors: " .. doorCount
+    currentItems = GetListItems()
+    StatusLabel.Text = "Items: " .. #currentItems
 
     if #currentItems == 0 then
-        Notify("Join a game first!", 3)
+        Notify("No items found. Wait for game.", 3)
     else
-        Notify("Found: " .. #currentItems, 2)
+        Notify("Found: " .. #currentItems .. " items", 2)
     end
 
     for i, item in ipairs(currentItems) do
@@ -997,15 +956,14 @@ local function RefreshItemList()
         row.Size = UDim2.new(1, -5, 0, 50)
         row.BackgroundColor3 = THEME.DARK
         row.BorderSizePixel = 1
-        row.BorderColor3 = (item.type == "Item") and THEME.ITEM or THEME.DOOR
+        row.BorderColor3 = THEME.ITEM
         row.Text = ""
         row.Parent = ItemScroll
         row.AutoButtonColor = false
-        row.ClipsDescendants = false  -- не режем
+        row.ClipsDescendants = false
         local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(0, 6); rc.Parent = row
-        AddStroke(row, (item.type == "Item") and THEME.ITEM or THEME.DOOR, 1.5)
+        AddStroke(row, THEME.ITEM, 1.5)
 
-        -- ViewportFrame
         local vpf = Instance.new("ViewportFrame")
         vpf.Size = UDim2.new(0, 44, 0, 44)
         vpf.Position = UDim2.new(0, 3, 0.5, -22)
@@ -1029,7 +987,7 @@ local function RefreshItemList()
         nl.Position = UDim2.new(0, 52, 0, 0)
         nl.BackgroundTransparency = 1
         nl.Text = itemName
-        nl.TextColor3 = (item.type == "Item") and THEME.ITEM or THEME.DOOR
+        nl.TextColor3 = THEME.ITEM
         nl.TextScaled = true
         nl.Font = Enum.Font.GothamBold
         nl.TextXAlignment = Enum.TextXAlignment.Left
@@ -1037,12 +995,9 @@ local function RefreshItemList()
         nl.Parent = row
         AddTextStroke(nl)
 
-        -- =====================================================
-        -- CLICK-CATCHER overlay поверх всего (главный фикс)
-        -- =====================================================
+        -- Click-catcher
         local catcher = Instance.new("TextButton")
         catcher.Size = UDim2.new(1, 0, 1, 0)
-        catcher.Position = UDim2.new(0, 0, 0, 0)
         catcher.BackgroundTransparency = 1
         catcher.Text = ""
         catcher.ZIndex = 100
@@ -1121,16 +1076,6 @@ SearchBar:GetPropertyChangedSignal("Text"):Connect(function()
 end)
 
 -- ============================================================
--- SHOW DOORS toggle
--- ============================================================
-ShowDoorsBtn.MouseButton1Click:Connect(function()
-    if tick() - lastScrollMisc < 0.3 then return end
-    State.ShowDoors = not State.ShowDoors
-    ShowDoorsBtn.Text = "Doors: " .. (State.ShowDoors and "ON" or "OFF")
-    RefreshItemList()
-end)
-
--- ============================================================
 -- SCAN
 -- ============================================================
 ScanBtn.MouseButton1Click:Connect(function()
@@ -1139,13 +1084,14 @@ ScanBtn.MouseButton1Click:Connect(function()
     RefreshItemList()
 end)
 
+-- Авто-обновление каждые 5 сек
 task.spawn(function()
     task.wait(1)
     RefreshItemList()
 
     while true do
-        task.wait(10)
-        if #currentItems == 0 then
+        task.wait(5)
+        if not scanInProgress then
             RefreshItemList()
         end
     end
