@@ -1,8 +1,8 @@
--- ========== XyqwPiggy v2.5 ==========
+-- ========== XyqwPiggy v3.0 UNIVERSAL ==========
 -- Piggy Script | made by Xyqwerq
--- Красный текст, тёмно-красная обводка, сквозь сейфы, точные имена
+-- Поддержка Book 1, Book 2 и других Piggy-игр
 
-local VERSION = "2.5"
+local VERSION = "3.0"
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
@@ -10,6 +10,47 @@ local CoreGui           = game:GetService("CoreGui")
 local StarterGui        = game:GetService("StarterGui")
 local LP                = Players.LocalPlayer
 
+-- ============================================================
+-- CONFIG ПО ИГРАМ
+-- ============================================================
+local GAME_CONFIGS = {
+    [4623386862] = {
+        name = "Piggy Book 1",
+        meshNames = {
+            ["rbxassetid://725833400"]                    = "Hammer",
+            ["rbxassetid://456878024"]                    = "Key",
+            ["rbxassetid://524706126"]                    = "Gear",
+            ["http://www.roblox.com/asset/?id=16884681"]  = "Tool",
+            ["http://www.roblox.com/asset/?id=16198309"]  = "Plank",
+            ["http://www.roblox.com/asset/?id=72012879"]  = "Battery",
+            ["rbxassetid://6714051581"]                   = "Note",
+            ["http://www.roblox.com/asset/?id=60791940"]  = "Gear",
+        },
+        keyMeshIds = {
+            ["rbxassetid://456878024"] = true,
+        },
+    },
+    -- Book 2 — заглушка (обновим по диагностике)
+    [5099979400] = {  -- предполагаемый PlaceId Book 2 (уточним)
+        name = "Piggy Book 2",
+        meshNames = {},
+        keyMeshIds = {},
+    },
+}
+
+-- Авто-детект текущей игры
+local CURRENT_GAME = GAME_CONFIGS[game.PlaceId]
+if not CURRENT_GAME then
+    CURRENT_GAME = {
+        name = "Unknown Piggy (" .. game.PlaceId .. ")",
+        meshNames = {},
+        keyMeshIds = {},
+    }
+end
+
+-- ============================================================
+-- THEME
+-- ============================================================
 local THEME = {
     BG     = Color3.fromRGB(0, 0, 0),
     DARK   = Color3.fromRGB(40, 0, 0),
@@ -48,8 +89,23 @@ local function AddTextStroke(label)
 end
 
 -- ============================================================
--- GET ITEM NAME (точный + безопасный)
+-- GET ITEM NAME (универсальная)
 -- ============================================================
+local function GetKeyNameByColor(c)
+    local h, s, v = Color3.toHSV(c)
+    if s < 0.15 then return "White Key" end
+    local hd = h * 360
+    if hd < 15 or hd >= 345 then return "Red Key" end
+    if hd < 45 then return "Orange Key" end
+    if hd < 70 then return "Yellow Key" end
+    if hd < 160 then return "Green Key" end
+    if hd < 200 then return "Cyan Key" end
+    if hd < 260 then return "Blue Key" end
+    if hd < 290 then return "Purple Key" end
+    if hd < 345 then return "Pink Key" end
+    return "Key"
+end
+
 local function GetItemName(item)
     local part = item.part
     if not part then return "Unknown" end
@@ -57,57 +113,53 @@ local function GetItemName(item)
     local mesh = part:FindFirstChildOfClass("SpecialMesh")
     local meshId = mesh and mesh.MeshId or nil
 
-    -- 1) Ключи (MeshId 456878024) — определяем по цвету ParticleEmitter через HSL
-    if meshId == "rbxassetid://456878024" then
+    -- 1) Ключи (по keyMeshIds текущей игры) — цвет через HSL
+    if meshId and CURRENT_GAME.keyMeshIds[meshId] then
         local pe = part:FindFirstChildOfClass("ParticleEmitter")
         if pe and pe.Color and pe.Color.Keypoints and #pe.Color.Keypoints > 0 then
-            local c = pe.Color.Keypoints[1].Value
-            local h, s, v = Color3.toHSV(c)
-            if s < 0.15 then return "White Key" end
-            local hd = h * 360
-            if hd < 15 or hd >= 345 then return "Red Key" end
-            if hd < 45 then return "Orange Key" end
-            if hd < 70 then return "Yellow Key" end
-            if hd < 160 then return "Green Key" end
-            if hd < 200 then return "Cyan Key" end
-            if hd < 260 then return "Blue Key" end
-            if hd < 290 then return "Purple Key" end
-            if hd < 345 then return "Pink Key" end
+            return GetKeyNameByColor(pe.Color.Keypoints[1].Value)
         end
         return "Key"
     end
 
-    -- 2) Точное сопоставление по MeshId
-    if meshId then
-        if meshId == "rbxassetid://725833400" then return "Hammer" end
-        if meshId == "rbxassetid://524706126" then return "Gear" end
-        if meshId == "http://www.roblox.com/asset/?id=16884681" then return "Tool" end
-        if meshId == "http://www.roblox.com/asset/?id=16198309" then return "Plank" end
-        if meshId == "http://www.roblox.com/asset/?id=72012879" then return "Battery" end
-        if meshId == "rbxassetid://6714051581" then return "Note" end
-        if meshId == "http://www.roblox.com/asset/?id=60791940" then return "Gear" end
+    -- 2) MeshId → имя из конфига
+    if meshId and CURRENT_GAME.meshNames[meshId] then
+        return CURRENT_GAME.meshNames[meshId]
+    end
 
-        -- Неизвестный MeshId — вернём ID
+    -- 3) Fallback — по имени части
+    local n = part.Name
+    if n and n ~= "" and not n:match("^%-?%d+$") then
+        return n
+    end
+
+    -- 4) По MeshId ID
+    if meshId then
         local id = meshId:match("id=(%d+)") or meshId:match("assetid://(%d+)")
         if id then return "Item (" .. id .. ")" end
     end
 
-    -- 3) Имя части
-    local n = part.Name
-    if n and n ~= "" and not n:match("^%-?%d+$") then
-        return n
+    -- 5) По цвету ParticleEmitter (для неизвестных игр)
+    local pe = part:FindFirstChildOfClass("ParticleEmitter")
+    if pe and pe.Color and pe.Color.Keypoints and #pe.Color.Keypoints > 0 then
+        local c = pe.Color.Keypoints[1].Value
+        local h, s, v = Color3.toHSV(c)
+        if s >= 0.3 then
+            return GetKeyNameByColor(c)
+        end
     end
 
     return "Item"
 end
 
 -- ============================================================
--- MENU FILTER
+-- MENU FILTER (универсальный)
 -- ============================================================
 local MENU_NAMES = {
     MenuCameras = true, MainMenuForest = true, MainMenuScreen = true,
     ItemsScreen = true, ItemsFocus = true, ItemsCamera = true,
-    MenuPositions = true,
+    MenuPositions = true, MenuStorage = true, AbilityMenuStorage = true,
+    MainMenuScreen = true,
 }
 local function IsInMenu(part)
     local c = part
@@ -121,13 +173,13 @@ local function IsInMenu(part)
 end
 
 -- ============================================================
--- SAFE / CONTAINER DETECTION (видеть предметы сквозь сейфы)
+-- SAFE DETECTION
 -- ============================================================
 local SAFE_KEYWORDS = {
     "safe", "container", "locker", "box", "chest", "cabinet",
     "crate", "drawer", "vault", "storage", "bin", "bag",
     "suitcase", "briefcase", "fridge", "closet", "store",
-    "shelf", "rack",
+    "shelf", "rack", "cage", "cell", "cage",
 }
 
 local function IsInsideSafe(part)
@@ -145,19 +197,19 @@ local function IsInsideSafe(part)
 end
 
 -- ============================================================
--- IS REAL ITEM (включая предметы внутри сейфов)
+-- IS REAL ITEM (универсальная)
 -- ============================================================
 local function IsRealItem(part)
-    -- 1) ParticleEmitter включён → точно предмет
+    -- ParticleEmitter включён
     local pe = part:FindFirstChildOfClass("ParticleEmitter")
     if pe and pe.Enabled then return true end
 
-    -- 2) ItemPickupScript → точно предмет
+    -- ItemPickupScript
     for _, ch in ipairs(part:GetChildren()) do
         if ch:IsA("Script") and ch.Name == "ItemPickupScript" then return true end
     end
 
-    -- 3) Внутри сейфа + есть ClickDetector → тоже предмет
+    -- Внутри сейфа + ClickDetector
     local isSafe = IsInsideSafe(part)
     if isSafe then
         local cd = part:FindFirstChildOfClass("ClickDetector")
@@ -167,33 +219,21 @@ local function IsRealItem(part)
     return false
 end
 
--- ============================================================
--- IS ALREADY PICKED UP
--- ============================================================
 local function IsAlreadyPickedUp(part)
     local isSafe = IsInsideSafe(part)
-
-    -- Внутри сейфа — не считаем подобранным
     if isSafe then
-        -- Только если явно MaxActivationDistance = 0
         local cd = part:FindFirstChildOfClass("ClickDetector")
         if cd and cd.MaxActivationDistance <= 0 then return true end
         return false
     end
-
-    -- Вне сейфа — стандартные проверки
     if part.Transparency >= 1 then return true end
     local pe = part:FindFirstChildOfClass("ParticleEmitter")
     if pe and not pe.Enabled then return true end
     local cd = part:FindFirstChildOfClass("ClickDetector")
     if cd and cd.MaxActivationDistance <= 0 then return true end
-
     return false
 end
 
--- ============================================================
--- STABLE KEY (для отслеживания строк)
--- ============================================================
 local function GetStableKey(part)
     local p = part.Position
     local mesh = part:FindFirstChildOfClass("SpecialMesh")
@@ -201,9 +241,6 @@ local function GetStableKey(part)
     return string.format("%s_%.1f_%.1f_%.1f", meshId, p.X, p.Y, p.Z)
 end
 
--- ============================================================
--- GET LIST ITEMS (сортированные)
--- ============================================================
 local function GetListItems()
     local items = {}
     for _, obj in ipairs(workspace:GetDescendants()) do
@@ -222,12 +259,8 @@ local function GetListItems()
         end
     end
     table.sort(items, function(a, b)
-        if math.abs(a.pos.X - b.pos.X) > 0.5 then
-            return a.pos.X < b.pos.X
-        end
-        if math.abs(a.pos.Z - b.pos.Z) > 0.5 then
-            return a.pos.Z < b.pos.Z
-        end
+        if math.abs(a.pos.X - b.pos.X) > 0.5 then return a.pos.X < b.pos.X end
+        if math.abs(a.pos.Z - b.pos.Z) > 0.5 then return a.pos.Z < b.pos.Z end
         return a.pos.Y < b.pos.Y
     end)
     return items
@@ -294,7 +327,7 @@ local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, -80, 1, 0)
 TitleLabel.Position = UDim2.new(0, 8, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "XyqwPiggy v" .. VERSION .. " | made by Xyqwerq"
+TitleLabel.Text = "XyqwPiggy v" .. VERSION .. " | " .. CURRENT_GAME.name
 TitleLabel.TextColor3 = THEME.MAIN
 TitleLabel.TextScaled = true
 TitleLabel.Font = Enum.Font.GothamBold
@@ -458,9 +491,6 @@ ML:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     MiscScroll.CanvasSize = UDim2.new(0, 0, 0, ML.AbsoluteContentSize.Y + 10)
 end)
 
--- ============================================================
--- SCROLL GUARDS
--- ============================================================
 local lastScrollItem, lastScrollMisc = 0, 0
 ItemScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
     lastScrollItem = tick()
@@ -470,7 +500,7 @@ MiscScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
 end)
 
 -- ============================================================
--- DOCK BUTTON
+-- DOCK
 -- ============================================================
 local DockBtn = Instance.new("TextButton")
 DockBtn.Size = UDim2.new(0, 110, 0, 32)
@@ -981,7 +1011,7 @@ local function TakeItem(item)
 end
 
 -- ============================================================
--- REFRESH LIST (со стабильными ключами)
+-- REFRESH
 -- ============================================================
 function RefreshItemList()
     if scanInProgress then return end
@@ -989,7 +1019,6 @@ function RefreshItemList()
 
     local savedScroll = ItemScroll.CanvasPosition
 
-    -- Существующие строки по ключу
     local existingRows = {}
     for _, ch in ipairs(ItemScroll:GetChildren()) do
         if ch:IsA("TextButton") and ch:GetAttribute("ItemKey") then
@@ -1005,7 +1034,6 @@ function RefreshItemList()
         newKeys[item.key] = true
     end
 
-    -- Удаляем старые
     for key, row in pairs(existingRows) do
         if not newKeys[key] then
             row:Destroy()
@@ -1013,7 +1041,6 @@ function RefreshItemList()
         end
     end
 
-    -- Создаём/обновляем
     for i, item in ipairs(currentItems) do
         local row = existingRows[item.key]
 
@@ -1119,7 +1146,6 @@ function RefreshItemList()
                 end
             end)
         else
-            -- Обновляем имя
             row:SetAttribute("ItemName", GetItemName(item))
             local nl = row:FindFirstChild("ItemNameLabel")
             if nl then nl.Text = row:GetAttribute("ItemName") end
@@ -1225,4 +1251,7 @@ game:BindToClose(function()
 end)
 
 print("[XyqwPiggy v" .. VERSION .. "] Loaded!")
+print("[XyqwPiggy v" .. VERSION .. "] Game: " .. CURRENT_GAME.name .. " (" .. game.PlaceId .. ")")
 print("[XyqwPiggy v" .. VERSION .. "] Made by Xyqwerq")
+
+Notify("Loaded for: " .. CURRENT_GAME.name, 4)
