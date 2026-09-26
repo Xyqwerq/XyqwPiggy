@@ -1,7 +1,7 @@
--- ========== XyqwPiggy v1.6 ==========
+-- ========== XyqwPiggy v1.7 ==========
 -- Piggy Script | made by Xyqwerq
 
-local VERSION = "1.6"
+local VERSION = "1.7"
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -19,6 +19,7 @@ local THEME = {
     SUBTEXT = Color3.fromRGB(180, 180, 180),
     ON = Color3.fromRGB(0, 220, 90),
     OFF = Color3.fromRGB(220, 0, 0),
+    STROKE = Color3.fromRGB(120, 0, 0), -- темно-красная обводка
 }
 
 local function Notify(text, duration)
@@ -34,19 +35,67 @@ end
 
 local function AddStroke(parent)
     local stroke = Instance.new("UIStroke")
-    stroke.Color = THEME.MAIN
-    stroke.Thickness = 1
+    stroke.Color = THEME.STROKE
+    stroke.Thickness = 1.5
     stroke.Parent = parent
     return stroke
 end
 
+-- Темно-красная обводка для текста
 local function AddTextStroke(label)
     local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(255, 255, 255)
+    stroke.Color = THEME.STROKE
     stroke.Thickness = 1
     stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
     stroke.Parent = label
     return stroke
+end
+
+-- Mapping по цвету частиц
+local COLOR_NAMES = {
+    [tostring(Color3.fromRGB(0, 0, 255))] = "Blue Key",
+    [tostring(Color3.fromRGB(0, 255, 255))] = "Cyan Key",
+    [tostring(Color3.fromRGB(0, 255, 85))] = "Green Key",
+    [tostring(Color3.fromRGB(255, 0, 0))] = "Red Key",
+    [tostring(Color3.fromRGB(255, 140, 0))] = "Orange Key",
+    [tostring(Color3.fromRGB(255, 255, 0))] = "Yellow Key",
+    [tostring(Color3.fromRGB(255, 20, 147))] = "Pink Key",
+}
+
+-- Mapping по MeshId
+local MESH_NAMES = {
+    ["rbxassetid://456878024"] = "Key",
+    ["rbxassetid://725833400"] = "Hammer",
+}
+
+local function GetItemName(item)
+    local part = item.part
+    
+    -- Пробуем по MeshId
+    local mesh = part:FindFirstChildOfClass("SpecialMesh")
+    if mesh and mesh.MeshId and MESH_NAMES[mesh.MeshId] then
+        return MESH_NAMES[mesh.MeshId]
+    end
+    
+    -- Пробуем по цвету частиц
+    local pe = part:FindFirstChildOfClass("ParticleEmitter")
+    if pe then
+        local colorStr = tostring(pe.Color)
+        if COLOR_NAMES[colorStr] then
+            return COLOR_NAMES[colorStr]
+        end
+        -- Если не нашли — определяем по RGB
+        local c = pe.Color
+        if c.R > 0.8 and c.G < 0.3 and c.B < 0.3 then return "Red Key" end
+        if c.B > 0.8 and c.R < 0.3 and c.G < 0.3 then return "Blue Key" end
+        if c.G > 0.8 and c.R < 0.3 and c.B < 0.3 then return "Green Key" end
+        if c.B > 0.8 and c.G > 0.8 and c.R < 0.3 then return "Cyan Key" end
+        if c.R > 0.8 and c.G > 0.8 and c.B < 0.3 then return "Yellow Key" end
+        if c.R > 0.8 and c.G > 0.3 and c.B > 0.8 then return "Pink Key" end
+    end
+    
+    -- Fallback
+    return "Item encrypted"
 end
 
 local State = {
@@ -72,7 +121,7 @@ ScreenGui.DisplayOrder = 999
 pcall(function() ScreenGui.Parent = CoreGui end)
 if not ScreenGui.Parent then ScreenGui.Parent = LP:WaitForChild("PlayerGui") end
 
--- ========== MAIN GUI ==========
+-- ========== MAIN GUI (280x340) ==========
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = UDim2.new(0, 280, 0, 340)
@@ -290,36 +339,6 @@ MiscLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     MiscScroll.CanvasSize = UDim2.new(0, 0, 0, MiscLayout.AbsoluteContentSize.Y + 10)
 end)
 
--- Защита скролла для Misc
-local miscScrolled = false
-local miscStartPos = 0
-MiscScroll.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        miscScrolled = false
-        miscStartPos = MiscScroll.CanvasPosition.Y
-    end
-end)
-MiscScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
-    if math.abs(MiscScroll.CanvasPosition.Y - miscStartPos) > 3 then
-        miscScrolled = true
-    end
-end)
-
--- Защита скролла для Main
-local itemScrolled = false
-local itemStartPos = 0
-ItemScroll.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        itemScrolled = false
-        itemStartPos = ItemScroll.CanvasPosition.Y
-    end
-end)
-ItemScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
-    if math.abs(ItemScroll.CanvasPosition.Y - itemStartPos) > 3 then
-        itemScrolled = true
-    end
-end)
-
 -- ========== DOCK ==========
 local DockBtn = Instance.new("TextButton")
 DockBtn.Name = "DockBtn"
@@ -465,13 +484,12 @@ ESPFolder.Parent = CoreGui
 
 local ESP = { Items = {}, Monster = {}, Players = {} }
 
--- ESP ITEMS — только предметы с ParticleEmitter
+-- ESP ITEMS
 local function EnableItemESP()
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("ClickDetector") then
             local parent = obj.Parent
             if parent and parent:IsA("BasePart") then
-                -- Исключаем лобби
                 local isMenu = false
                 local check = parent
                 while check do
@@ -481,7 +499,6 @@ local function EnableItemESP()
                     end
                     check = check.Parent
                 end
-                -- Только настоящие предметы (с ParticleEmitter или SpecialMesh)
                 local hasParticle = parent:FindFirstChildOfClass("ParticleEmitter") ~= nil
                 local hasMesh = parent:FindFirstChildOfClass("SpecialMesh") ~= nil
                 if not isMenu and (hasParticle or hasMesh) and not ESP.Items[parent] then
@@ -508,28 +525,44 @@ local function DisableItemESP()
     ESP.Items = {}
 end
 
--- ESP MONSTER — все Humanoid кроме игроков
+-- ESP MONSTER (фильтр по расстоянию — только рядом)
 local function EnableMonsterESP()
     task.spawn(function()
         while State.ESP.Monster do
-            for _, obj in ipairs(workspace:GetDescendants()) do
-                if obj:IsA("Model") then
-                    local hum = obj:FindFirstChildOfClass("Humanoid")
-                    if hum and hum.Health > 0 then
-                        -- Проверяем что это НЕ игрок
-                        local plr = Players:GetPlayerFromCharacter(obj)
-                        if not plr then
-                            if not ESP.Monster[obj] then
-                                local hl = Instance.new("Highlight")
-                                hl.Name = "MonsterESP_" .. obj.Name
-                                hl.FillColor = Color3.fromRGB(255, 0, 0)
-                                hl.FillTransparency = 0.5
-                                hl.OutlineColor = Color3.fromRGB(255, 0, 0)
-                                hl.OutlineTransparency = 0
-                                hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                                hl.Adornee = obj
-                                hl.Parent = ESPFolder
-                                ESP.Monster[obj] = hl
+            local char = LP.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj:IsA("Model") then
+                        local hum = obj:FindFirstChildOfClass("Humanoid")
+                        if hum and hum.Health > 0 then
+                            local plr = Players:GetPlayerFromCharacter(obj)
+                            if not plr then
+                                local objHrp = obj:FindFirstChild("HumanoidRootPart")
+                                if objHrp then
+                                    local dist = (objHrp.Position - hrp.Position).Magnitude
+                                    -- Только рядом (100 studs)
+                                    if dist < 100 then
+                                        if not ESP.Monster[obj] then
+                                            local hl = Instance.new("Highlight")
+                                            hl.Name = "MonsterESP_" .. obj.Name
+                                            hl.FillColor = Color3.fromRGB(255, 0, 0)
+                                            hl.FillTransparency = 0.5
+                                            hl.OutlineColor = Color3.fromRGB(255, 0, 0)
+                                            hl.OutlineTransparency = 0
+                                            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                                            hl.Adornee = obj
+                                            hl.Parent = ESPFolder
+                                            ESP.Monster[obj] = hl
+                                        end
+                                    else
+                                        -- Далеко — убираем
+                                        if ESP.Monster[obj] then
+                                            ESP.Monster[obj]:Destroy()
+                                            ESP.Monster[obj] = nil
+                                        end
+                                    end
+                                end
                             end
                         end
                     end
@@ -589,27 +622,36 @@ task.spawn(function()
     end
 end)
 
--- TOOL USAGE — только то что близко (15 studs)
+-- TOOL USAGE — вся карта (все объекты, применимые к текущему tool)
 local toolHighlights = {}
 local function EnableToolIndicator()
     task.spawn(function()
         while State.ToolIndicator do
             local char = LP.Character
             if char then
-                local hrp = char:FindFirstChild("HumanoidRootPart")
                 local tool = char:FindFirstChildOfClass("Tool")
-                if hrp and tool then
+                if tool then
+                    -- Показываем ВСЕ объекты с ClickDetector/ProximityPrompt
                     for _, obj in ipairs(workspace:GetDescendants()) do
                         local isInteract = obj:IsA("ProximityPrompt") or obj:IsA("ClickDetector")
                         if isInteract then
                             local parent = obj.Parent
                             if parent and parent:IsA("BasePart") then
-                                local dist = (parent.Position - hrp.Position).Magnitude
-                                if dist < 15 and not toolHighlights[obj] then
+                                -- Исключаем лобби
+                                local isMenu = false
+                                local check = parent
+                                while check do
+                                    if check.Name == "MenuCameras" or check.Name == "GameFolder" then
+                                        isMenu = true
+                                        break
+                                    end
+                                    check = check.Parent
+                                end
+                                if not isMenu and not toolHighlights[obj] then
                                     local hl = Instance.new("Highlight")
                                     hl.Name = "ToolUse_" .. parent.Name
                                     hl.FillColor = Color3.fromRGB(255, 255, 0)
-                                    hl.FillTransparency = 0.5
+                                    hl.FillTransparency = 0.6
                                     hl.OutlineColor = Color3.fromRGB(255, 255, 0)
                                     hl.OutlineTransparency = 0
                                     hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
@@ -661,7 +703,7 @@ local function EnableAntiTrap()
     end)
 end
 
--- DELETE PIGGY (Visual)
+-- DELETE PIGGY
 local deletePiggyConn = nil
 local function EnableDeletePiggy()
     if deletePiggyConn then return end
@@ -724,6 +766,7 @@ local function MakeToggle(name, getState, onToggle)
     box.BorderColor3 = THEME.MAIN
     box.Parent = row
     box.AutoButtonColor = false
+    box.ZIndex = 5  -- выше ряда
     
     local bc = Instance.new("UICorner")
     bc.CornerRadius = UDim.new(0, 4)
@@ -734,16 +777,16 @@ local function MakeToggle(name, getState, onToggle)
         box.BackgroundColor3 = getState() and THEME.ON or THEME.OFF
     end
     
+    -- Клик по квадрату
     box.MouseButton1Click:Connect(function()
-        if miscScrolled then return end
         onToggle()
         UpdateCheck()
         Notify(name .. ": " .. (getState() and "ON" or "OFF"), 2)
     end)
     
+    -- Клик по ряду
     row.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            if miscScrolled then return end
             local mousePos = input.Position
             local bp = box.AbsolutePosition
             local bs = box.AbsoluteSize
@@ -784,7 +827,7 @@ MakeToggle("Anti-Trap", function() return State.AntiTrap end, function()
     if State.AntiTrap then EnableAntiTrap() end
 end)
 
--- ========== СПИСОК ПРЕДМЕТОВ С 3D МОДЕЛЬЮ ==========
+-- ========== СПИСОК ПРЕДМЕТОВ ==========
 local currentItems = {}
 local scanInProgress = false
 local spinningItems = {}
@@ -827,7 +870,7 @@ local function TakeItem(item)
     pcall(function() fireclickdetector(item.detector) end)
     task.wait(0.25)
     hrp.CFrame = savedCF
-    Notify("Взял предмет", 2)
+    Notify("Взял: " .. GetItemName(item), 2)
 end
 
 local function RefreshItemList()
@@ -846,7 +889,7 @@ local function RefreshItemList()
         local noItems = Instance.new("TextLabel")
         noItems.Size = UDim2.new(1, -5, 0, 30)
         noItems.BackgroundTransparency = 1
-        noItems.Text = "Предметов не найдено. Зайди на карту!"
+        noItems.Text = "Войдите в игру!"
         noItems.TextColor3 = THEME.SUBTEXT
         noItems.TextScaled = true
         noItems.Font = Enum.Font.Gotham
@@ -869,7 +912,7 @@ local function RefreshItemList()
         rc.Parent = row
         AddStroke(row)
         
-        -- ViewportFrame с 3D моделью
+        -- ViewportFrame
         local vpf = Instance.new("ViewportFrame")
         vpf.Size = UDim2.new(0, 36, 0, 36)
         vpf.Position = UDim2.new(0, 4, 0.5, -18)
@@ -883,15 +926,35 @@ local function RefreshItemList()
         vpfCorner.Parent = vpf
         AddStroke(vpf)
         
-        -- Копируем Part с Mesh
+        -- Копируем Part
         local meshPart = item.part:Clone()
         meshPart.Anchored = true
         meshPart.CanCollide = false
+        meshPart.CanQuery = false
+        meshPart.CanTouch = false
+        
+        -- Нормализуем размер для видимости
+        local origSize = meshPart.Size
+        local maxDim = math.max(origSize.X, origSize.Y, origSize.Z)
+        if maxDim > 0 and maxDim < 1 then
+            -- Маленький — увеличиваем
+            local scale = 2 / maxDim
+            meshPart.Size = origSize * scale
+            local mesh = meshPart:FindFirstChildOfClass("SpecialMesh")
+            if mesh then
+                mesh.Scale = mesh.Scale * scale
+            end
+        elseif maxDim > 10 then
+            -- Большой — уменьшаем
+            local scale = 5 / maxDim
+            meshPart.Size = origSize * scale
+        end
+        
         meshPart.Parent = vpf
         
         -- Убираем лишнее
         for _, child in ipairs(meshPart:GetChildren()) do
-            if child:IsA("Script") or child:IsA("ClickDetector") then
+            if child:IsA("Script") or child:IsA("ClickDetector") or child:IsA("ParticleEmitter") then
                 child:Destroy()
             end
         end
@@ -900,13 +963,12 @@ local function RefreshItemList()
         local cam = Instance.new("Camera")
         cam.FieldOfView = 70
         local size = meshPart.Size
-        local maxDim = math.max(size.X, size.Y, size.Z)
-        local dist = maxDim * 2.5
-        cam.CFrame = CFrame.new(Vector3.new(dist, dist * 0.5, dist), Vector3.new(0, 0, 0))
+        local dist = math.max(size.X, size.Y, size.Z) * 2.5
+        if dist < 2 then dist = 2 end
+        cam.CFrame = CFrame.new(Vector3.new(dist, dist * 0.7, dist), Vector3.new(0, 0, 0))
         vpf.CurrentCamera = cam
         cam.Parent = vpf
         
-        -- Добавляем во вращение
         table.insert(spinningItems, meshPart)
         
         -- Имя
@@ -914,7 +976,7 @@ local function RefreshItemList()
         nameLbl.Size = UDim2.new(1, -50, 1, 0)
         nameLbl.Position = UDim2.new(0, 46, 0, 0)
         nameLbl.BackgroundTransparency = 1
-        nameLbl.Text = "Item #" .. i
+        nameLbl.Text = GetItemName(item)
         nameLbl.TextColor3 = THEME.MAIN
         nameLbl.TextScaled = true
         nameLbl.Font = Enum.Font.GothamBold
@@ -922,15 +984,27 @@ local function RefreshItemList()
         nameLbl.Parent = row
         AddTextStroke(nameLbl)
         
-        -- Клик
+        -- Клик с защитой
         local pressStart = 0
+        local scrolledDuringPress = false
+        local pressCanvasPos = 0
+        
         row.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
                 pressStart = tick()
+                scrolledDuringPress = false
+                pressCanvasPos = ItemScroll.CanvasPosition.Y
             end
         end)
+        
+        ItemScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+            if math.abs(ItemScroll.CanvasPosition.Y - pressCanvasPos) > 3 then
+                scrolledDuringPress = true
+            end
+        end)
+        
         row.MouseButton1Click:Connect(function()
-            if itemScrolled then return end
+            if scrolledDuringPress then return end
             if tick() - pressStart > 0.5 then return end
             TakeItem(item)
         end)
@@ -939,7 +1013,7 @@ local function RefreshItemList()
     scanInProgress = false
 end
 
--- Вращение 3D-моделей
+-- Вращение 3D
 RunService.RenderStepped:Connect(function(dt)
     for _, model in ipairs(spinningItems) do
         if model and model.Parent then
@@ -959,10 +1033,12 @@ task.spawn(function()
     RefreshItemList()
 end)
 
+-- Roblox-сообщение если нет предметов каждые 10 сек
 task.spawn(function()
     while true do
-        task.wait(15)
+        task.wait(10)
         if #currentItems == 0 then
+            Notify("Войдите в игру!", 3)
             RefreshItemList()
         end
     end
@@ -1005,7 +1081,6 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- ========== ФИНАЛ ==========
 game:BindToClose(function()
     if deletePiggyConn then deletePiggyConn:Disconnect() end
     ESPFolder:Destroy()
