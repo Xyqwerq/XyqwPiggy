@@ -1,7 +1,7 @@
--- ========== XyqwPiggy v1.4 ==========
+-- ========== XyqwPiggy v1.5 ==========
 -- Piggy Script | made by Xyqwerq ♡
 
-local VERSION = "1.4"
+local VERSION = "1.5"
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -50,12 +50,12 @@ local State = {
 
 -- CLEANUP
 for _, obj in ipairs(CoreGui:GetChildren()) do
-    if obj.Name == "XyqwPiggy" or obj.Name == "XyqwPiggyESP" or obj.Name == "XyqwPiggyMisc" then
+    if obj.Name == "XyqwPiggy" or obj.Name == "XyqwPiggyESP" then
         obj:Destroy()
     end
 end
 
--- ========== MAIN SCREEN ==========
+-- ========== SCREEN ==========
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "XyqwPiggy"
 ScreenGui.ResetOnSpawn = false
@@ -65,7 +65,7 @@ ScreenGui.DisplayOrder = 999
 pcall(function() ScreenGui.Parent = CoreGui end)
 if not ScreenGui.Parent then ScreenGui.Parent = LP:WaitForChild("PlayerGui") end
 
--- ========== MAIN GUI (280x340 как XyqwHub) ==========
+-- ========== MAIN GUI (280x340) ==========
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = UDim2.new(0, 280, 0, 340)
@@ -103,7 +103,7 @@ TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = TitleBar
 
--- Кнопка Misc (квадратная, обводка)
+-- Misc кнопка
 local MiscBtn = Instance.new("TextButton")
 MiscBtn.Size = UDim2.new(0, 22, 0, 22)
 MiscBtn.Position = UDim2.new(1, -52, 0.5, -11)
@@ -121,7 +121,7 @@ MiscBtnCorner.CornerRadius = UDim.new(0, 5)
 MiscBtnCorner.Parent = MiscBtn
 AddStroke(MiscBtn)
 
--- Кнопка X (обводка)
+-- Close кнопка
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 22, 0, 22)
 CloseBtn.Position = UDim2.new(1, -26, 0.5, -11)
@@ -139,7 +139,7 @@ CloseCorner.CornerRadius = UDim.new(0, 5)
 CloseCorner.Parent = CloseBtn
 AddStroke(CloseBtn)
 
--- Search Bar (обводка)
+-- Search
 local SearchBar = Instance.new("TextBox")
 SearchBar.Size = UDim2.new(1, -20, 0, 24)
 SearchBar.Position = UDim2.new(0, 10, 0, 36)
@@ -159,11 +159,24 @@ SearchCorner.CornerRadius = UDim.new(0, 6)
 SearchCorner.Parent = SearchBar
 AddStroke(SearchBar)
 
--- Content Scroll (список предметов, СКРОЛЛИТСЯ как XyqwHub)
+-- Info label
+local InfoLabel = Instance.new("TextLabel")
+InfoLabel.Name = "InfoLabel"
+InfoLabel.Size = UDim2.new(1, -20, 0, 16)
+InfoLabel.Position = UDim2.new(0, 10, 0, 64)
+InfoLabel.BackgroundTransparency = 1
+InfoLabel.Text = "Нажми Scan чтобы найти предметы"
+InfoLabel.TextColor3 = THEME.SUBTEXT
+InfoLabel.TextScaled = true
+InfoLabel.Font = Enum.Font.Gotham
+InfoLabel.TextXAlignment = Enum.TextXAlignment.Left
+InfoLabel.Parent = MainFrame
+
+-- Item Scroll
 local ItemScroll = Instance.new("ScrollingFrame")
 ItemScroll.Name = "ItemScroll"
-ItemScroll.Size = UDim2.new(1, -20, 1, -100)
-ItemScroll.Position = UDim2.new(0, 10, 0, 66)
+ItemScroll.Size = UDim2.new(1, -20, 1, -150)
+ItemScroll.Position = UDim2.new(0, 10, 0, 84)
 ItemScroll.BackgroundTransparency = 1
 ItemScroll.BorderSizePixel = 0
 ItemScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -180,12 +193,12 @@ ItemLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     ItemScroll.CanvasSize = UDim2.new(0, 0, 0, ItemLayout.AbsoluteContentSize.Y + 70)
 end)
 
--- Кнопка Scan (квадратная, обводка, внизу справа)
+-- ========== КНОПКА SCAN (по середине, снизу, прямоугольная) ==========
 local ScanBtn = Instance.new("TextButton")
-ScanBtn.Size = UDim2.new(0, 55, 0, 55)
-ScanBtn.Position = UDim2.new(1, -63, 1, -63)
-ScanBtn.BackgroundColor3 = THEME.MAIN
-ScanBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+ScanBtn.Size = UDim2.new(0, 140, 0, 32)
+ScanBtn.Position = UDim2.new(0.5, -70, 1, -42)
+ScanBtn.BackgroundColor3 = THEME.BG
+ScanBtn.TextColor3 = THEME.MAIN
 ScanBtn.Text = "Scan"
 ScanBtn.TextScaled = true
 ScanBtn.Font = Enum.Font.GothamBold
@@ -195,8 +208,9 @@ ScanBtn.Parent = MainFrame
 ScanBtn.AutoButtonColor = false
 ScanBtn.ZIndex = 10
 AddStroke(ScanBtn)
+-- БЕЗ UICorner = острые углы
 
--- ========== MISC ОКНО (200x200) ==========
+-- ========== MISC (200x200) ==========
 local MiscFrame = Instance.new("Frame")
 MiscFrame.Name = "MiscFrame"
 MiscFrame.Size = UDim2.new(0, 200, 0, 200)
@@ -212,7 +226,6 @@ local MiscFrameCorner = Instance.new("UICorner")
 MiscFrameCorner.CornerRadius = UDim.new(0, 10)
 MiscFrameCorner.Parent = MiscFrame
 
--- Misc Title
 local MiscTitleBar = Instance.new("Frame")
 MiscTitleBar.Size = UDim2.new(1, 0, 0, 26)
 MiscTitleBar.BackgroundColor3 = THEME.TITLE
@@ -251,7 +264,6 @@ MiscCloseCorner.CornerRadius = UDim.new(0, 5)
 MiscCloseCorner.Parent = MiscClose
 AddStroke(MiscClose)
 
--- Misc Scroll
 local MiscScroll = Instance.new("ScrollingFrame")
 MiscScroll.Size = UDim2.new(1, -12, 1, -34)
 MiscScroll.Position = UDim2.new(0, 6, 0, 30)
@@ -271,7 +283,7 @@ MiscLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     MiscScroll.CanvasSize = UDim2.new(0, 0, 0, MiscLayout.AbsoluteContentSize.Y + 10)
 end)
 
--- ========== DOCK BUTTON ==========
+-- ========== DOCK ==========
 local DockBtn = Instance.new("TextButton")
 DockBtn.Name = "DockBtn"
 DockBtn.Size = UDim2.new(0, 110, 0, 32)
@@ -292,11 +304,9 @@ local DockCorner = Instance.new("UICorner")
 DockCorner.CornerRadius = UDim.new(0, 10)
 DockCorner.Parent = DockBtn
 
--- Dock drag
 local dockDragging = false
 local dockDragStart, dockStartPos
 local dockMoved = false
-
 DockBtn.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dockDragging = true
@@ -305,7 +315,6 @@ DockBtn.InputBegan:Connect(function(input)
         dockStartPos = DockBtn.Position
     end
 end)
-
 UserInputService.InputChanged:Connect(function(input)
     if dockDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
         local delta = input.Position - dockDragStart
@@ -318,7 +327,6 @@ UserInputService.InputChanged:Connect(function(input)
         end
     end
 end)
-
 UserInputService.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         if dockDragging and not dockMoved then
@@ -412,7 +420,6 @@ CloseBtn.MouseButton1Click:Connect(function()
     DockBtn.Visible = true
 end)
 
-print("[XyqwPiggy v" .. VERSION .. "] Part 1/3 loaded")
 -- ========== ESP FOLDER ==========
 local ESPFolder = Instance.new("Folder")
 ESPFolder.Name = "XyqwPiggyESP"
@@ -420,25 +427,33 @@ ESPFolder.Parent = CoreGui
 
 local ESP = { Items = {}, Monster = nil, Players = {} }
 
--- ESP ITEMS (обводка, не иконка)
+-- ESP ITEMS (через ClickDetector, исключая лобби)
 local function EnableItemESP()
     for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") then
-            local name = obj.Name:lower()
-            if name:find("item") or name:find("key") or name:find("tool")
-               or name:find("gift") or name:find("egg") or name:find("coin")
-               or name:find("pickup") or name:find("collect") then
-                if not ESP.Items[obj] then
+        if obj:IsA("ClickDetector") then
+            local parent = obj.Parent
+            if parent and parent:IsA("BasePart") then
+                -- Исключаем лобби/меню
+                local isMenu = false
+                local check = parent
+                while check do
+                    if check.Name == "MenuCameras" or check.Name == "GameFolder" then
+                        isMenu = true
+                        break
+                    end
+                    check = check.Parent
+                end
+                if not isMenu and not ESP.Items[parent] then
                     local hl = Instance.new("Highlight")
-                    hl.Name = "ItemESP_" .. obj.Name
+                    hl.Name = "ItemESP_" .. parent.Name
                     hl.FillColor = Color3.fromRGB(0, 255, 255)
                     hl.FillTransparency = 0.7
                     hl.OutlineColor = Color3.fromRGB(0, 255, 255)
                     hl.OutlineTransparency = 0
                     hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                    hl.Adornee = obj
+                    hl.Adornee = parent
                     hl.Parent = ESPFolder
-                    ESP.Items[obj] = hl
+                    ESP.Items[parent] = hl
                 end
             end
         end
@@ -457,8 +472,7 @@ local function FindMonster()
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("Model") then
             local name = obj.Name:lower()
-            if name:find("piggy") or name:find("monster") or name:find("bot") 
-               or name:find("mrp") or name:find("mrpiggy") or name:find("piggybot") then
+            if name:find("piggy") or name:find("bot") or name:find("npc") then
                 local hum = obj:FindFirstChildOfClass("Humanoid")
                 if hum and hum.Health > 0 then return obj end
             end
@@ -478,7 +492,6 @@ local function EnableMonsterESP()
                     hl.FillColor = Color3.fromRGB(255, 0, 0)
                     hl.FillTransparency = 0.5
                     hl.OutlineColor = Color3.fromRGB(255, 0, 0)
-                    hl.OutlineTransparency = 0
                     hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
                     hl.Adornee = monster
                     hl.Parent = ESPFolder
@@ -512,7 +525,6 @@ local function EnablePlayerESP()
                     hl.FillColor = Color3.fromRGB(0, 255, 0)
                     hl.FillTransparency = 0.6
                     hl.OutlineColor = Color3.fromRGB(0, 255, 0)
-                    hl.OutlineTransparency = 0
                     hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
                     hl.Adornee = plr.Character
                     hl.Parent = ESPFolder
@@ -537,7 +549,7 @@ task.spawn(function()
     end
 end)
 
--- TOOL USAGE INDICATOR (подсвечиваем ProximityPrompt И ClickDetector)
+-- TOOL USAGE (через ClickDetector)
 local toolHighlights = {}
 local function EnableToolIndicator()
     task.spawn(function()
@@ -547,25 +559,28 @@ local function EnableToolIndicator()
                 local tool = char:FindFirstChildOfClass("Tool")
                 if tool then
                     for _, obj in ipairs(workspace:GetDescendants()) do
-                        local isPrompt = obj:IsA("ProximityPrompt")
-                        local isClick = obj:IsA("ClickDetector")
-                        if isPrompt or isClick then
+                        if obj:IsA("ClickDetector") then
                             local parent = obj.Parent
-                            if parent and (parent:IsA("BasePart") or parent:IsA("Model")) then
-                                if not toolHighlights[obj] then
-                                    local target = parent:IsA("BasePart") and parent or parent:FindFirstChildWhichIsA("BasePart")
-                                    if target then
-                                        local hl = Instance.new("Highlight")
-                                        hl.Name = "ToolUse_" .. target.Name
-                                        hl.FillColor = Color3.fromRGB(255, 255, 0)
-                                        hl.FillTransparency = 0.6
-                                        hl.OutlineColor = Color3.fromRGB(255, 255, 0)
-                                        hl.OutlineTransparency = 0
-                                        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                                        hl.Adornee = target
-                                        hl.Parent = ESPFolder
-                                        toolHighlights[obj] = hl
+                            if parent and parent:IsA("BasePart") then
+                                local isMenu = false
+                                local check = parent
+                                while check do
+                                    if check.Name == "MenuCameras" or check.Name == "GameFolder" then
+                                        isMenu = true
+                                        break
                                     end
+                                    check = check.Parent
+                                end
+                                if not isMenu and not toolHighlights[obj] then
+                                    local hl = Instance.new("Highlight")
+                                    hl.Name = "ToolUse_" .. parent.Name
+                                    hl.FillColor = Color3.fromRGB(255, 255, 0)
+                                    hl.FillTransparency = 0.6
+                                    hl.OutlineColor = Color3.fromRGB(255, 255, 0)
+                                    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                                    hl.Adornee = parent
+                                    hl.Parent = ESPFolder
+                                    toolHighlights[obj] = hl
                                 end
                             end
                         end
@@ -596,7 +611,7 @@ local function EnableAntiTrap()
                         if obj:IsA("BasePart") and obj.CanCollide then
                             local name = obj.Name:lower()
                             if name:find("trap") or name:find("lava") or name:find("spike")
-                               or name:find("kill") or name:find("damage") or name:find("hurt") then
+                               or name:find("kill") or name:find("damage") then
                                 if (obj.Position - hrp.Position).Magnitude < 6 then
                                     dangerous = true
                                     break
@@ -618,7 +633,6 @@ end
 -- GODMODE
 local godHook = nil
 local godConn = nil
-local monsterKillerConn = nil
 local kickBlockConn = nil
 
 local function EnableGodMode()
@@ -688,8 +702,7 @@ local function EnableDeletePiggy()
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Model") then
                 local name = obj.Name:lower()
-                if name:find("piggy") or name:find("monster") or name:find("bot") 
-                   or name:find("mrp") or name:find("mrpiggy") then
+                if name:find("piggy") or name:find("bot") or name:find("npc") then
                     local hum = obj:FindFirstChildOfClass("Humanoid")
                     if hum and hum.Health > 0 then
                         pcall(function()
@@ -708,8 +721,7 @@ local function DisableDeletePiggy()
     if deletePiggyConn then deletePiggyConn:Disconnect() deletePiggyConn = nil end
 end
 
-print("[XyqwPiggy v" .. VERSION .. "] Part 2/3 loaded")
--- ========== TOGGLE (с чекбоксом и обводкой) ==========
+-- ========== TOGGLE ==========
 local function MakeToggle(name, getState, onToggle)
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1, -4, 0, 28)
@@ -770,11 +782,8 @@ local function MakeToggle(name, getState, onToggle)
             Notify(name .. ": " .. (getState() and "ON" or "OFF"), 2)
         end
     end)
-    
-    return row
 end
 
--- MISC ФУНКЦИИ
 MakeToggle("GodMode", function() return State.GodMode end, function()
     if State.GodMode then DisableGodMode() else EnableGodMode() end
 end)
@@ -808,18 +817,40 @@ MakeToggle("Anti-Trap", function() return State.AntiTrap end, function()
     if State.AntiTrap then EnableAntiTrap() end
 end)
 
--- ========== СПИСОК ПРЕДМЕТОВ ==========
+-- ========== СПИСОК ПРЕДМЕТОВ (через ClickDetector) ==========
 local currentItems = {}
+local scanInProgress = false
 
-local function GetItemImage(item)
-    local decal = item:FindFirstChildOfClass("Decal")
-    if decal and decal.Texture ~= "" then return decal.Texture end
-    local mesh = item:FindFirstChildOfClass("SpecialMesh")
-    if mesh and mesh.TextureId and mesh.TextureId ~= "" then return mesh.TextureId end
-    return "rbxassetid://6022668892"
+local function GetRealItems()
+    local items = {}
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("ClickDetector") then
+            local parent = obj.Parent
+            if parent and parent:IsA("BasePart") then
+                -- Исключаем лобби
+                local isMenu = false
+                local check = parent
+                while check do
+                    if check.Name == "MenuCameras" or check.Name == "GameFolder" then
+                        isMenu = true
+                        break
+                    end
+                    check = check.Parent
+                end
+                if not isMenu then
+                    table.insert(items, {
+                        part = parent,
+                        detector = obj,
+                        position = parent.Position,
+                        name = parent.Name
+                    })
+                end
+            end
+        end
+    end
+    return items
 end
 
--- Функция телепорта + взять + вернуться
 local function TakeItem(item)
     local char = LP.Character
     if not char then return end
@@ -828,77 +859,50 @@ local function TakeItem(item)
     
     local savedCF = hrp.CFrame
     
-    -- Телепорт к предмету
-    hrp.CFrame = CFrame.new(item.Position + Vector3.new(0, 3, 0))
-    task.wait(0.3)
+    -- Телепорт
+    hrp.CFrame = CFrame.new(item.position + Vector3.new(0, 3, 0))
+    task.wait(0.35)
     
-    -- Активируем ProximityPrompt
-    for _, prompt in ipairs(item:GetChildren()) do
-        if prompt:IsA("ProximityPrompt") then
-            pcall(function() fireproximityprompt(prompt) end)
-        end
-    end
+    -- Клик
+    pcall(function()
+        fireclickdetector(item.detector)
+    end)
     
-    -- Активируем ClickDetector
-    for _, cd in ipairs(item:GetChildren()) do
-        if cd:IsA("ClickDetector") then
-            pcall(function() fireclickdetector(cd) end)
-        end
-    end
+    task.wait(0.25)
     
-    task.wait(0.2)
-    
-    -- Возвращаемся обратно
+    -- Обратно
     hrp.CFrame = savedCF
-    Notify("Collected: " .. item.Name, 2)
+    Notify("Взял: " .. item.name:sub(1, 15), 2)
 end
 
--- Обновление списка
 local function RefreshItemList()
-    -- Очистка
+    if scanInProgress then return end
+    scanInProgress = true
+    
     for _, child in ipairs(ItemScroll:GetChildren()) do
-        if child:IsA("Frame") or child:IsA("TextButton") then
+        if child:IsA("TextButton") or child:IsA("Frame") then
             child:Destroy()
         end
     end
     
-    currentItems = {}
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") then
-            local name = obj.Name:lower()
-            if name:find("item") or name:find("key") or name:find("tool")
-               or name:find("gift") or name:find("egg") or name:find("coin")
-               or name:find("pickup") or name:find("collect") then
-                -- Исключаем предметы в лобби (далеко от игрока)
-                local char = LP.Character
-                local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    local dist = (obj.Position - hrp.Position).Magnitude
-                    if dist < 1000 then
-                        table.insert(currentItems, obj)
-                    end
-                else
-                    table.insert(currentItems, obj)
-                end
-            end
-        end
-    end
+    currentItems = GetRealItems()
+    
+    InfoLabel.Text = "Найдено: " .. #currentItems .. " предметов"
     
     if #currentItems == 0 then
         local noItems = Instance.new("TextLabel")
         noItems.Size = UDim2.new(1, -5, 0, 30)
         noItems.BackgroundTransparency = 1
-        noItems.Text = "No items found"
+        noItems.Text = "Предметов не найдено. Зайди на карту!"
         noItems.TextColor3 = THEME.SUBTEXT
         noItems.TextScaled = true
         noItems.Font = Enum.Font.Gotham
         noItems.Parent = ItemScroll
     end
     
-    -- Создаём ряды
     for i, item in ipairs(currentItems) do
         local row = Instance.new("TextButton")
-        row.Size = UDim2.new(1, -5, 0, 44)
+        row.Size = UDim2.new(1, -5, 0, 40)
         row.BackgroundColor3 = THEME.DARK
         row.BorderSizePixel = 1
         row.BorderColor3 = THEME.MAIN
@@ -911,10 +915,10 @@ local function RefreshItemList()
         rc.Parent = row
         AddStroke(row)
         
-        -- Иконка предмета
+        -- Иконка
         local iconFrame = Instance.new("Frame")
-        iconFrame.Size = UDim2.new(0, 36, 0, 36)
-        iconFrame.Position = UDim2.new(0, 5, 0.5, -18)
+        iconFrame.Size = UDim2.new(0, 32, 0, 32)
+        iconFrame.Position = UDim2.new(0, 5, 0.5, -16)
         iconFrame.BackgroundColor3 = THEME.BG
         iconFrame.BorderSizePixel = 1
         iconFrame.BorderColor3 = THEME.MAIN
@@ -923,84 +927,76 @@ local function RefreshItemList()
         local ic = Instance.new("UICorner")
         ic.CornerRadius = UDim.new(0, 5)
         ic.Parent = iconFrame
-        AddStroke(iconFrame)
         
-        local icon = Instance.new("ImageLabel")
-        icon.Size = UDim2.new(1, -4, 1, -4)
-        icon.Position = UDim2.new(0, 2, 0, 2)
-        icon.BackgroundTransparency = 1
-        icon.Image = GetItemImage(item)
-        icon.Parent = iconFrame
+        local numLbl = Instance.new("TextLabel")
+        numLbl.Size = UDim2.new(1, 0, 1, 0)
+        numLbl.BackgroundTransparency = 1
+        numLbl.Text = tostring(i)
+        numLbl.TextColor3 = THEME.MAIN
+        numLbl.TextScaled = true
+        numLbl.Font = Enum.Font.GothamBold
+        numLbl.Parent = iconFrame
         
-        -- Название
+        -- Имя (короткое)
         local nameLbl = Instance.new("TextLabel")
         nameLbl.Size = UDim2.new(1, -55, 1, 0)
-        nameLbl.Position = UDim2.new(0, 46, 0, 0)
+        nameLbl.Position = UDim2.new(0, 45, 0, 0)
         nameLbl.BackgroundTransparency = 1
-        nameLbl.Text = item.Name
+        nameLbl.Text = "Item #" .. i
         nameLbl.TextColor3 = THEME.MAIN
         nameLbl.TextScaled = true
         nameLbl.Font = Enum.Font.GothamBold
         nameLbl.TextXAlignment = Enum.TextXAlignment.Left
-        nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
         nameLbl.Parent = row
         
-        -- Клик — телепорт + взять + обратно
+        -- Scroll защита
+        local pressStart = 0
+        local scrolled = false
+        local startCanvasPos = 0
+        
+        row.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                pressStart = tick()
+                scrolled = false
+                startCanvasPos = ItemScroll.CanvasPosition.Y
+            end
+        end)
+        
+        ItemScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+            if math.abs(ItemScroll.CanvasPosition.Y - startCanvasPos) > 3 then
+                scrolled = true
+            end
+        end)
+        
         row.MouseButton1Click:Connect(function()
+            if scrolled then return end
+            if tick() - pressStart > 0.5 then return end
             TakeItem(item)
         end)
     end
+    
+    scanInProgress = false
 end
 
--- Scan кнопка
 ScanBtn.MouseButton1Click:Connect(function()
-    Notify("Scanning...", 2)
+    Notify("Сканирование...", 2)
     task.wait(0.3)
     RefreshItemList()
-    Notify("Scan complete (" .. #currentItems .. " items)", 2)
 end)
 
--- Авто-сканирование при запуске
+-- Автоскан при запуске
 task.spawn(function()
     task.wait(1)
     RefreshItemList()
 end)
 
--- ========== RESIZE Misc ==========
-local MiscResize = Instance.new("TextButton")
-MiscResize.Size = UDim2.new(0, 12, 0, 12)
-MiscResize.Position = UDim2.new(1, -14, 1, -14)
-MiscResize.BackgroundColor3 = THEME.MAIN
-MiscResize.Text = ""
-MiscResize.BorderSizePixel = 0
-MiscResize.Parent = MiscFrame
-MiscResize.AutoButtonColor = false
-MiscResize.ZIndex = 10
-
-local MiscResizeCorner = Instance.new("UICorner")
-MiscResizeCorner.CornerRadius = UDim.new(0, 3)
-MiscResizeCorner.Parent = MiscResize
-
-local miscResizing = false
-local miscResizeStart, miscResizeStartSize
-MiscResize.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        miscResizing = true
-        miscResizeStart = input.Position
-        miscResizeStartSize = MiscFrame.Size
-    end
-end)
-UserInputService.InputChanged:Connect(function(input)
-    if miscResizing and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local delta = input.Position - miscResizeStart
-        local newX = math.clamp(miscResizeStartSize.X.Offset + delta.X, 180, 500)
-        local newY = math.clamp(miscResizeStartSize.Y.Offset + delta.Y, 180, 600)
-        MiscFrame.Size = UDim2.new(0, newX, 0, newY)
-    end
-end)
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        miscResizing = false
+-- Автоскан каждые 10 секунд (для новых карт)
+task.spawn(function()
+    while true do
+        task.wait(10)
+        if #currentItems == 0 then
+            RefreshItemList()
+        end
     end
 end)
 
