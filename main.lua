@@ -1,8 +1,8 @@
--- ========== XyqwPiggy v2.3 ==========
+-- ========== XyqwPiggy v2.5 ==========
 -- Piggy Script | made by Xyqwerq
--- Только ITEMS. Двери убраны. Подобранные скрыты.
+-- Красный текст, тёмно-красная обводка, сквозь сейфы, точные имена
 
-local VERSION = "2.3"
+local VERSION = "2.5"
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
@@ -19,7 +19,7 @@ local THEME = {
     ON     = Color3.fromRGB(0, 220, 90),
     OFF    = Color3.fromRGB(220, 0, 0),
     STROKE = Color3.fromRGB(120, 0, 0),
-    ITEM   = Color3.fromRGB(0, 255, 255),
+    ITEM   = Color3.fromRGB(255, 0, 0),
 }
 
 local function Notify(text, duration)
@@ -48,48 +48,51 @@ local function AddTextStroke(label)
 end
 
 -- ============================================================
--- MESH → NAME
--- ============================================================
-local MESH_NAMES = {
-    ["rbxassetid://725833400"]                    = "Hammer",
-    ["rbxassetid://456878024"]                    = "Key",
-    ["rbxassetid://524706126"]                    = "Gear",
-    ["http://www.roblox.com/asset/?id=16884681"]  = "Tool",
-    ["http://www.roblox.com/asset/?id=16198309"]  = "Plank",
-    ["http://www.roblox.com/asset/?id=72012879"]  = "Battery",
-    ["rbxassetid://6714051581"]                   = "Note",
-    ["http://www.roblox.com/asset/?id=60791940"]  = "Gear",
-}
-
--- ============================================================
--- GET ITEM NAME (расширенный, безопасный)
+-- GET ITEM NAME (точный + безопасный)
 -- ============================================================
 local function GetItemName(item)
     local part = item.part
     if not part then return "Unknown" end
 
-    -- 1) ParticleEmitter цвет → ключи (безопасно через Keypoints)
-    local pe = part:FindFirstChildOfClass("ParticleEmitter")
-    if pe and pe.Color and pe.Color.Keypoints and #pe.Color.Keypoints > 0 then
-        local c = pe.Color.Keypoints[1].Value
-        if c.R > 0.9 and c.G < 0.3 and c.B < 0.3 then return "Red Key" end
-        if c.B > 0.9 and c.R < 0.3 and c.G < 0.3 then return "Blue Key" end
-        if c.G > 0.9 and c.R < 0.3 and c.B < 0.3 then return "Green Key" end
-        if c.B > 0.9 and c.G > 0.9 and c.R < 0.3 then return "Cyan Key" end
-        if c.R > 0.9 and c.G > 0.9 and c.B < 0.3 then return "Yellow Key" end
-        if c.R > 0.9 and c.G > 0.3 and c.B < 0.1 then return "Orange Key" end
-        if c.R > 0.5 and c.G < 0.4 and c.B > 0.9 then return "Purple Key" end
-        if c.R > 0.9 and c.G > 0.5 and c.B > 0.9 then return "Pink Key" end
-        if c.R > 0.9 and c.G > 0.9 and c.B > 0.9 then return "White Key" end
-    end
-
-    -- 2) MeshId
     local mesh = part:FindFirstChildOfClass("SpecialMesh")
-    if mesh and mesh.MeshId and MESH_NAMES[mesh.MeshId] then
-        return MESH_NAMES[mesh.MeshId]
+    local meshId = mesh and mesh.MeshId or nil
+
+    -- 1) Ключи (MeshId 456878024) — определяем по цвету ParticleEmitter через HSL
+    if meshId == "rbxassetid://456878024" then
+        local pe = part:FindFirstChildOfClass("ParticleEmitter")
+        if pe and pe.Color and pe.Color.Keypoints and #pe.Color.Keypoints > 0 then
+            local c = pe.Color.Keypoints[1].Value
+            local h, s, v = Color3.toHSV(c)
+            if s < 0.15 then return "White Key" end
+            local hd = h * 360
+            if hd < 15 or hd >= 345 then return "Red Key" end
+            if hd < 45 then return "Orange Key" end
+            if hd < 70 then return "Yellow Key" end
+            if hd < 160 then return "Green Key" end
+            if hd < 200 then return "Cyan Key" end
+            if hd < 260 then return "Blue Key" end
+            if hd < 290 then return "Purple Key" end
+            if hd < 345 then return "Pink Key" end
+        end
+        return "Key"
     end
 
-    -- 3) Имя части (если осмысленное)
+    -- 2) Точное сопоставление по MeshId
+    if meshId then
+        if meshId == "rbxassetid://725833400" then return "Hammer" end
+        if meshId == "rbxassetid://524706126" then return "Gear" end
+        if meshId == "http://www.roblox.com/asset/?id=16884681" then return "Tool" end
+        if meshId == "http://www.roblox.com/asset/?id=16198309" then return "Plank" end
+        if meshId == "http://www.roblox.com/asset/?id=72012879" then return "Battery" end
+        if meshId == "rbxassetid://6714051581" then return "Note" end
+        if meshId == "http://www.roblox.com/asset/?id=60791940" then return "Gear" end
+
+        -- Неизвестный MeshId — вернём ID
+        local id = meshId:match("id=(%d+)") or meshId:match("assetid://(%d+)")
+        if id then return "Item (" .. id .. ")" end
+    end
+
+    -- 3) Имя части
     local n = part.Name
     if n and n ~= "" and not n:match("^%-?%d+$") then
         return n
@@ -118,46 +121,88 @@ local function IsInMenu(part)
 end
 
 -- ============================================================
--- IS REAL ITEM (только реальные подбираемые предметы)
+-- SAFE / CONTAINER DETECTION (видеть предметы сквозь сейфы)
 -- ============================================================
-local KNOWN_ITEM_MESHES = {
-    ["rbxassetid://725833400"] = true,                     -- Hammer
-    ["rbxassetid://456878024"] = true,                     -- Key
-    ["rbxassetid://524706126"] = true,                     -- Gear
-    ["http://www.roblox.com/asset/?id=16884681"] = true,   -- Tool
-    ["http://www.roblox.com/asset/?id=16198309"] = true,   -- Plank
-    ["http://www.roblox.com/asset/?id=72012879"] = true,   -- Battery
-    ["rbxassetid://6714051581"] = true,                    -- Note
-    ["http://www.roblox.com/asset/?id=60791940"] = true,   -- Gear
+local SAFE_KEYWORDS = {
+    "safe", "container", "locker", "box", "chest", "cabinet",
+    "crate", "drawer", "vault", "storage", "bin", "bag",
+    "suitcase", "briefcase", "fridge", "closet", "store",
+    "shelf", "rack",
 }
 
--- Является ли часть настоящим ПОДБИРАЕМЫМ предметом
+local function IsInsideSafe(part)
+    local c = part
+    local depth = 0
+    while c and depth < 10 do
+        local n = c.Name:lower()
+        for _, kw in ipairs(SAFE_KEYWORDS) do
+            if n:find(kw, 1, true) then return true, c end
+        end
+        c = c.Parent
+        depth = depth + 1
+    end
+    return false, nil
+end
+
+-- ============================================================
+-- IS REAL ITEM (включая предметы внутри сейфов)
+-- ============================================================
 local function IsRealItem(part)
-    -- 1) ParticleEmitter ВКЛЮЧЁН → точно предмет в игре
+    -- 1) ParticleEmitter включён → точно предмет
     local pe = part:FindFirstChildOfClass("ParticleEmitter")
     if pe and pe.Enabled then return true end
-    -- 2) ItemPickupScript
+
+    -- 2) ItemPickupScript → точно предмет
     for _, ch in ipairs(part:GetChildren()) do
         if ch:IsA("Script") and ch.Name == "ItemPickupScript" then return true end
     end
-    return false
-end
 
--- Уже подобран / невидим / нельзя взять
-local function IsAlreadyPickedUp(part)
-    -- Невидимый
-    if part.Transparency >= 1 then return true end
-    -- ParticleEmitter выключен (значит подобрали)
-    local pe = part:FindFirstChildOfClass("ParticleEmitter")
-    if pe and not pe.Enabled then return true end
-    -- MaxActivationDistance = 0 (нельзя кликнуть)
-    local cd = part:FindFirstChildOfClass("ClickDetector")
-    if cd and cd.MaxActivationDistance <= 0 then return true end
+    -- 3) Внутри сейфа + есть ClickDetector → тоже предмет
+    local isSafe = IsInsideSafe(part)
+    if isSafe then
+        local cd = part:FindFirstChildOfClass("ClickDetector")
+        if cd then return true end
+    end
+
     return false
 end
 
 -- ============================================================
--- GET LIST ITEMS (ТОЛЬКО реальные подбираемые предметы)
+-- IS ALREADY PICKED UP
+-- ============================================================
+local function IsAlreadyPickedUp(part)
+    local isSafe = IsInsideSafe(part)
+
+    -- Внутри сейфа — не считаем подобранным
+    if isSafe then
+        -- Только если явно MaxActivationDistance = 0
+        local cd = part:FindFirstChildOfClass("ClickDetector")
+        if cd and cd.MaxActivationDistance <= 0 then return true end
+        return false
+    end
+
+    -- Вне сейфа — стандартные проверки
+    if part.Transparency >= 1 then return true end
+    local pe = part:FindFirstChildOfClass("ParticleEmitter")
+    if pe and not pe.Enabled then return true end
+    local cd = part:FindFirstChildOfClass("ClickDetector")
+    if cd and cd.MaxActivationDistance <= 0 then return true end
+
+    return false
+end
+
+-- ============================================================
+-- STABLE KEY (для отслеживания строк)
+-- ============================================================
+local function GetStableKey(part)
+    local p = part.Position
+    local mesh = part:FindFirstChildOfClass("SpecialMesh")
+    local meshId = mesh and mesh.MeshId or ""
+    return string.format("%s_%.1f_%.1f_%.1f", meshId, p.X, p.Y, p.Z)
+end
+
+-- ============================================================
+-- GET LIST ITEMS (сортированные)
 -- ============================================================
 local function GetListItems()
     local items = {}
@@ -169,12 +214,22 @@ local function GetListItems()
                     table.insert(items, {
                         part = part,
                         detector = obj,
-                        type = "Item",
+                        key = GetStableKey(part),
+                        pos = part.Position,
                     })
                 end
             end
         end
     end
+    table.sort(items, function(a, b)
+        if math.abs(a.pos.X - b.pos.X) > 0.5 then
+            return a.pos.X < b.pos.X
+        end
+        if math.abs(a.pos.Z - b.pos.Z) > 0.5 then
+            return a.pos.Z < b.pos.Z
+        end
+        return a.pos.Y < b.pos.Y
+    end)
     return items
 end
 
@@ -514,7 +569,7 @@ CloseBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ============================================================
--- ESP FOLDER
+-- ESP
 -- ============================================================
 local ESPFolder = Instance.new("Folder")
 ESPFolder.Name = "XyqwPiggyESP"
@@ -702,7 +757,7 @@ local function DisableDeletePiggy()
 end
 
 -- ============================================================
--- TOGGLE (input-based)
+-- TOGGLE
 -- ============================================================
 local function MakeToggle(name, getState, onToggle)
     local row = Instance.new("Frame")
@@ -747,7 +802,6 @@ local function MakeToggle(name, getState, onToggle)
 
     local catcher = Instance.new("TextButton")
     catcher.Size = UDim2.new(1, 0, 1, 0)
-    catcher.Position = UDim2.new(0, 0, 0, 0)
     catcher.BackgroundTransparency = 1
     catcher.Text = ""
     catcher.ZIndex = 10
@@ -818,7 +872,7 @@ MakeToggle("Anti-Trap", function() return State.AntiTrap end, function()
 end)
 
 -- ============================================================
--- 3D VIEW (WorldModel + ScaleTo)
+-- 3D VIEW
 -- ============================================================
 local currentItems = {}
 local spinningModels = {}
@@ -840,11 +894,8 @@ local function Create3DView(part, vpf)
             or ch:IsA("BillboardGui") or ch:IsA("SurfaceGui") or ch:IsA("Sound")
             or ch:IsA("SelectionBox") or ch:IsA("Highlight") or ch:IsA("ForceField")
             or ch:IsA("Fire") or ch:IsA("Smoke") or ch:IsA("Sparkles")
-            or ch:IsA("PointLight") or ch:IsA("SpotLight") or ch:IsA("SurfaceLight")
-            or ch:IsA("Decal") or ch:IsA("Texture") then
-                if not ch:IsA("Decal") and not ch:IsA("Texture") then
-                    ch:Destroy()
-                end
+            or ch:IsA("PointLight") or ch:IsA("SpotLight") or ch:IsA("SurfaceLight") then
+                ch:Destroy()
             end
         end
 
@@ -922,7 +973,6 @@ local function TakeItem(item)
         Notify("Cannot take: " .. GetItemName(item), 2)
     end
 
-    -- Автообновление списка через 0.5 сек
     task.delay(0.5, function()
         if not scanInProgress then
             RefreshItemList()
@@ -931,118 +981,154 @@ local function TakeItem(item)
 end
 
 -- ============================================================
--- REFRESH LIST
+-- REFRESH LIST (со стабильными ключами)
 -- ============================================================
 function RefreshItemList()
     if scanInProgress then return end
     scanInProgress = true
 
+    local savedScroll = ItemScroll.CanvasPosition
+
+    -- Существующие строки по ключу
+    local existingRows = {}
     for _, ch in ipairs(ItemScroll:GetChildren()) do
-        if ch:IsA("TextButton") then ch:Destroy() end
+        if ch:IsA("TextButton") and ch:GetAttribute("ItemKey") then
+            existingRows[ch:GetAttribute("ItemKey")] = ch
+        end
     end
-    spinningModels = {}
 
     currentItems = GetListItems()
     StatusLabel.Text = "Items: " .. #currentItems
 
-    if #currentItems == 0 then
-        Notify("No items found. Wait for game.", 3)
-    else
-        Notify("Found: " .. #currentItems .. " items", 2)
+    local newKeys = {}
+    for _, item in ipairs(currentItems) do
+        newKeys[item.key] = true
     end
 
+    -- Удаляем старые
+    for key, row in pairs(existingRows) do
+        if not newKeys[key] then
+            row:Destroy()
+            existingRows[key] = nil
+        end
+    end
+
+    -- Создаём/обновляем
     for i, item in ipairs(currentItems) do
-        local row = Instance.new("TextButton")
-        row.Size = UDim2.new(1, -5, 0, 50)
-        row.BackgroundColor3 = THEME.DARK
-        row.BorderSizePixel = 1
-        row.BorderColor3 = THEME.MAIN
-        row.Text = ""
-        row.Parent = ItemScroll
-        row.AutoButtonColor = false
-        row.ClipsDescendants = false
-        local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(0, 6); rc.Parent = row
-        AddStroke(row, THEME.ITEM, 1.5)
+        local row = existingRows[item.key]
 
-        local vpf = Instance.new("ViewportFrame")
-        vpf.Size = UDim2.new(0, 44, 0, 44)
-        vpf.Position = UDim2.new(0, 3, 0.5, -22)
-        vpf.BackgroundColor3 = Color3.fromRGB(15, 5, 5)
-        vpf.BorderSizePixel = 1
-        vpf.BorderColor3 = THEME.MAIN
-        vpf.Parent = row
-        vpf.ZIndex = 2
-        vpf.Ambient = Color3.fromRGB(220, 220, 220)
-        vpf.LightColor = Color3.fromRGB(255, 255, 255)
-        local vc = Instance.new("UICorner"); vc.CornerRadius = UDim.new(0, 5); vc.Parent = vpf
-        AddStroke(vpf)
+        if not row then
+            row = Instance.new("TextButton")
+            row.Size = UDim2.new(1, -5, 0, 50)
+            row.BackgroundColor3 = THEME.DARK
+            row.BorderSizePixel = 1
+            row.BorderColor3 = THEME.STROKE
+            row.Text = ""
+            row.Parent = ItemScroll
+            row.AutoButtonColor = false
+            row.ClipsDescendants = false
+            row:SetAttribute("ItemKey", item.key)
+            local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(0, 6); rc.Parent = row
+            AddStroke(row, THEME.STROKE, 1.5)
 
-        Create3DView(item.part, vpf)
+            local vpf = Instance.new("ViewportFrame")
+            vpf.Size = UDim2.new(0, 44, 0, 44)
+            vpf.Position = UDim2.new(0, 3, 0.5, -22)
+            vpf.BackgroundColor3 = Color3.fromRGB(15, 5, 5)
+            vpf.BorderSizePixel = 1
+            vpf.BorderColor3 = THEME.MAIN
+            vpf.Parent = row
+            vpf.ZIndex = 2
+            vpf.Ambient = Color3.fromRGB(220, 220, 220)
+            vpf.LightColor = Color3.fromRGB(255, 255, 255)
+            local vc = Instance.new("UICorner"); vc.CornerRadius = UDim.new(0, 5); vc.Parent = vpf
+            AddStroke(vpf)
 
-        local itemName = GetItemName(item)
-        row:SetAttribute("ItemName", itemName)
+            Create3DView(item.part, vpf)
 
-        local nl = Instance.new("TextLabel")
-        nl.Size = UDim2.new(1, -60, 1, 0)
-        nl.Position = UDim2.new(0, 52, 0, 0)
-        nl.BackgroundTransparency = 1
-        nl.Text = itemName
-        nl.TextColor3 = THEME.ITEM
-        nl.TextScaled = true
-        nl.Font = Enum.Font.GothamBold
-        nl.TextXAlignment = Enum.TextXAlignment.Left
-        nl.TextTruncate = Enum.TextTruncate.AtEnd
-        nl.Parent = row
-        AddTextStroke(nl)
+            local itemName = GetItemName(item)
+            row:SetAttribute("ItemName", itemName)
 
-        -- Click-catcher
-        local catcher = Instance.new("TextButton")
-        catcher.Size = UDim2.new(1, 0, 1, 0)
-        catcher.BackgroundTransparency = 1
-        catcher.Text = ""
-        catcher.ZIndex = 100
-        catcher.AutoButtonColor = false
-        catcher.Parent = row
+            local nl = Instance.new("TextLabel")
+            nl.Name = "ItemNameLabel"
+            nl.Size = UDim2.new(1, -60, 1, 0)
+            nl.Position = UDim2.new(0, 52, 0, 0)
+            nl.BackgroundTransparency = 1
+            nl.Text = itemName
+            nl.TextColor3 = THEME.MAIN
+            nl.TextScaled = true
+            nl.Font = Enum.Font.GothamBold
+            nl.TextXAlignment = Enum.TextXAlignment.Left
+            nl.TextTruncate = Enum.TextTruncate.AtEnd
+            nl.Parent = row
+            AddTextStroke(nl)
 
-        local pressStart, pressPos, moved, tracking = 0, nil, false, false
+            local catcher = Instance.new("TextButton")
+            catcher.Size = UDim2.new(1, 0, 1, 0)
+            catcher.BackgroundTransparency = 1
+            catcher.Text = ""
+            catcher.ZIndex = 100
+            catcher.AutoButtonColor = false
+            catcher.Parent = row
 
-        catcher.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-                pressStart = tick()
-                pressPos = input.Position
-                moved = false
-                tracking = true
-            end
-        end)
+            local pressStart, pressPos, moved, tracking = 0, nil, false, false
 
-        UserInputService.InputChanged:Connect(function(input)
-            if tracking and pressPos and
-            (input.UserInputType == Enum.UserInputType.MouseMovement
-            or input.UserInputType == Enum.UserInputType.Touch) then
-                local d = (input.Position - pressPos).Magnitude
-                if d > 6 then moved = true end
-            end
-        end)
-
-        UserInputService.InputEnded:Connect(function(input)
-            if not tracking then return end
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-                tracking = false
-                local held = tick() - pressStart
-                if not moved and held < 0.5 and (tick() - lastScrollItem) > 0.3 then
-                    local mp = input.Position
-                    local cp, cs = catcher.AbsolutePosition, catcher.AbsoluteSize
-                    if mp.X >= cp.X and mp.X <= cp.X + cs.X
-                    and mp.Y >= cp.Y and mp.Y <= cp.Y + cs.Y then
-                        TakeItem(item)
-                    end
+            catcher.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch then
+                    pressStart = tick()
+                    pressPos = input.Position
+                    moved = false
+                    tracking = true
                 end
-                pressPos = nil
-            end
-        end)
+            end)
+
+            UserInputService.InputChanged:Connect(function(input)
+                if tracking and pressPos and
+                (input.UserInputType == Enum.UserInputType.MouseMovement
+                or input.UserInputType == Enum.UserInputType.Touch) then
+                    local d = (input.Position - pressPos).Magnitude
+                    if d > 6 then moved = true end
+                end
+            end)
+
+            UserInputService.InputEnded:Connect(function(input)
+                if not tracking then return end
+                if input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch then
+                    tracking = false
+                    local held = tick() - pressStart
+                    if not moved and held < 0.5 and (tick() - lastScrollItem) > 0.3 then
+                        local mp = input.Position
+                        local cp, cs = catcher.AbsolutePosition, catcher.AbsoluteSize
+                        if mp.X >= cp.X and mp.X <= cp.X + cs.X
+                        and mp.Y >= cp.Y and mp.Y <= cp.Y + cs.Y then
+                            local curItem
+                            for _, it in ipairs(currentItems) do
+                                if it.key == row:GetAttribute("ItemKey") then
+                                    curItem = it
+                                    break
+                                end
+                            end
+                            if curItem then
+                                TakeItem(curItem)
+                            end
+                        end
+                    end
+                    pressPos = nil
+                end
+            end)
+        else
+            -- Обновляем имя
+            row:SetAttribute("ItemName", GetItemName(item))
+            local nl = row:FindFirstChild("ItemNameLabel")
+            if nl then nl.Text = row:GetAttribute("ItemName") end
+        end
     end
+
+    task.defer(function()
+        ItemScroll.CanvasPosition = savedScroll
+    end)
 
     scanInProgress = false
 end
@@ -1084,7 +1170,6 @@ ScanBtn.MouseButton1Click:Connect(function()
     RefreshItemList()
 end)
 
--- Авто-обновление каждые 5 сек
 task.spawn(function()
     task.wait(1)
     RefreshItemList()
