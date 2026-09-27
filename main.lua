@@ -1,9 +1,8 @@
--- ========== XyqwPiggy v4.3 UNIVERSAL ==========
+-- ========== XyqwPiggy v5.0 UNIVERSAL ==========
 -- Piggy Script | made by Xyqwerq
--- Book 1 (4623386862) + Book 2 (5661005779)
--- ТП обратно ВСЕГДА | Скан 1 сек | Стабильные имена | Все предметы
+-- Book 1 + Book 2 | Стабильные имена через GetFullName | Кеш имён
 
-local VERSION = "4.3"
+local VERSION = "5.0"
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
@@ -13,7 +12,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LP                = Players.LocalPlayer
 
 -- ============================================================
--- CONFIG ПО ИГРАМ
+-- CONFIG
 -- ============================================================
 local GAME_CONFIGS = {
     [4623386862] = {
@@ -147,7 +146,7 @@ local function GetItemName(item)
 end
 
 -- ============================================================
--- MENU FILTER
+-- MENU
 -- ============================================================
 local MENU_NAMES = {
     MenuCameras = true, MainMenuForest = true, MainMenuScreen = true,
@@ -166,7 +165,7 @@ local function IsInMenu(part)
 end
 
 -- ============================================================
--- SAFE DETECTION
+-- SAFE
 -- ============================================================
 local SAFE_WORDS = {
     "safe", "locker", "vault", "cabinet", "fridge",
@@ -200,7 +199,7 @@ local function IsDoor(part)
 end
 
 -- ============================================================
--- IS REAL ITEM (универсальный)
+-- IS REAL ITEM
 -- ============================================================
 local function IsRealItem(part)
     if IsDoor(part) then return false end
@@ -229,19 +228,6 @@ local function IsRealItem(part)
         if part:FindFirstChildOfClass("ClickDetector") then return true end
     end
 
-    local n = part.Name
-    if n and not n:match("^%-?%d+$") and n ~= "" then
-        local c = part.Parent
-        local depth = 0
-        while c and depth < 8 do
-            if c.Name == "LoadedMap" or c.Parent == workspace then
-                if part:FindFirstChildOfClass("ClickDetector") then return true end
-            end
-            c = c.Parent
-            depth = depth + 1
-        end
-    end
-
     return false
 end
 
@@ -261,16 +247,16 @@ local function IsAlreadyPickedUp(part)
 end
 
 -- ============================================================
--- STABLE KEY (точнее — 0.1 + имя)
+-- STABLE KEY — через GetFullName (уникально ВСЕГДА)
 -- ============================================================
 local function GetStableKey(part)
-    local p = part.Position
-    local mesh = part:FindFirstChildOfClass("SpecialMesh")
-    local meshId = mesh and mesh.MeshId or ""
-    local x = math.floor(p.X * 10 + 0.5) / 10
-    local y = math.floor(p.Y * 10 + 0.5) / 10
-    local z = math.floor(p.Z * 10 + 0.5) / 10
-    return string.format("%s_%.1f_%.1f_%.1f_%s", meshId, x, y, z, part.Name)
+    -- GetFullName уникален и НЕ меняется
+    local ok, fullName = pcall(function() return part:GetFullName() end)
+    if ok and fullName and fullName ~= "" then
+        return fullName
+    end
+    -- fallback
+    return tostring(part)
 end
 
 -- ============================================================
@@ -291,6 +277,7 @@ local function GetListItems()
                         pos = part.Position,
                         isSafe = isSafe,
                         safeParent = safeParent,
+                        cachedName = nil,  -- кеш имени
                     })
                 end
             end
@@ -466,7 +453,7 @@ ScanBtn.ZIndex = 10
 AddStroke(ScanBtn, THEME.MAIN, 2); AddTextStroke(ScanBtn)
 
 -- ============================================================
--- PROGRESS BAR
+-- PROGRESS
 -- ============================================================
 local ProgressFrame = Instance.new("Frame")
 ProgressFrame.Size = UDim2.new(1, -20, 0, 26)
@@ -857,7 +844,7 @@ local function EnableAntiTrap()
 end
 
 -- ============================================================
--- DELETE PIGGY (с восстановлением)
+-- DELETE PIGGY
 -- ============================================================
 local dPConn = nil
 local dPSaved = {}
@@ -1113,7 +1100,7 @@ local function Create3DView(part, vpf)
 end
 
 -- ============================================================
--- HELPERS: ключ
+-- HELPERS
 -- ============================================================
 local function FindKeyInBackpack()
     local char = LP.Character
@@ -1142,7 +1129,7 @@ local function EquipTool(tool)
 end
 
 -- ============================================================
--- TAKE ITEM (v4.3: ТП обратно ВСЕГДА)
+-- TAKE ITEM
 -- ============================================================
 local function TakeItem(item)
     if State.Picking then return end
@@ -1200,7 +1187,6 @@ local function TakeItem(item)
         if pe and not pe.Enabled and not isSafe then picked = true end
     end
 
-    -- ✅ ТП ОБРАТНО ВСЕГДА
     hrp.CFrame = saved
 
     if picked then
@@ -1222,8 +1208,10 @@ local function TakeItem(item)
 end
 
 -- ============================================================
--- REFRESH
+-- REFRESH LIST (кеш имён — НЕ пересчитываем если ключ тот же)
 -- ============================================================
+local nameCache = {}  -- [key] = name
+
 function RefreshItemList()
     if scanInProgress then return end
     scanInProgress = true
@@ -1245,15 +1233,24 @@ function RefreshItemList()
         newKeys[item.key] = true
     end
 
+    -- Удаляем устаревшие
     for key, row in pairs(existingRows) do
         if not newKeys[key] then
             row:Destroy()
             existingRows[key] = nil
+            nameCache[key] = nil  -- чистим кеш
         end
     end
 
     for i, item in ipairs(currentItems) do
         local row = existingRows[item.key]
+
+        -- Имя из кеша или вычисляем
+        local itemName = nameCache[item.key]
+        if not itemName then
+            itemName = GetItemName(item)
+            nameCache[item.key] = itemName
+        end
 
         if not row then
             row = Instance.new("TextButton")
@@ -1284,7 +1281,6 @@ function RefreshItemList()
 
             Create3DView(item.part, vpf)
 
-            local itemName = GetItemName(item)
             row:SetAttribute("ItemName", itemName)
 
             local nl = Instance.new("TextLabel")
@@ -1354,14 +1350,8 @@ function RefreshItemList()
                     pressPos = nil
                 end
             end)
-        else
-            row:SetAttribute("ItemName", GetItemName(item))
-            local nl = row:FindFirstChild("ItemNameLabel")
-            if nl then
-                nl.Text = row:GetAttribute("ItemName")
-                nl.TextColor3 = THEME.MAIN
-            end
         end
+        -- Имя НЕ обновляем если строка уже есть (кеш гарантирует правильность)
     end
 
     task.defer(function()
@@ -1407,7 +1397,6 @@ ScanBtn.MouseButton1Click:Connect(function()
     RefreshItemList()
 end)
 
--- ✅ СКАН КАЖДУЮ 1 СЕК
 task.spawn(function()
     task.wait(1)
     RefreshItemList()
