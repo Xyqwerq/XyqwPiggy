@@ -1,9 +1,9 @@
--- ========== XyqwPiggy v4.1 UNIVERSAL ==========
+-- ========== XyqwPiggy v4.3 UNIVERSAL ==========
 -- Piggy Script | made by Xyqwerq
 -- Book 1 (4623386862) + Book 2 (5661005779)
--- Умные сейфы | Прогресс-бар подбора | Name Encrypted
+-- ТП обратно ВСЕГДА | Скан 1 сек | Стабильные имена | Все предметы
 
-local VERSION = "4.1"
+local VERSION = "4.3"
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
@@ -136,8 +136,6 @@ local function GetItemName(item)
     local n = part.Name
     if n and n ~= "" and not n:match("^%-?%d+$") then return n end
 
-    if meshId then return "Name Encrypted" end
-
     local pe = part:FindFirstChildOfClass("ParticleEmitter")
     if pe and pe.Color and pe.Color.Keypoints and #pe.Color.Keypoints > 0 then
         local c = pe.Color.Keypoints[1].Value
@@ -145,7 +143,7 @@ local function GetItemName(item)
         if s >= 0.3 then return GetKeyNameByColor(c) end
     end
 
-    return "Item"
+    return "Name Encrypted"
 end
 
 -- ============================================================
@@ -181,9 +179,7 @@ local function IsInsideSafe(part)
     while c and depth < 8 do
         local n = c.Name:lower()
         for _, kw in ipairs(SAFE_WORDS) do
-            if n == kw or n:find(kw, 1, true) then
-                return true, c
-            end
+            if n == kw or n:find(kw, 1, true) then return true, c end
         end
         c = c.Parent
         depth = depth + 1
@@ -192,21 +188,60 @@ local function IsInsideSafe(part)
 end
 
 -- ============================================================
--- IS REAL ITEM
+-- IS DOOR
+-- ============================================================
+local function IsDoor(part)
+    for _, ch in ipairs(part:GetChildren()) do
+        if ch:IsA("Script") and ch.Name:match("^%-?%d+$") then
+            return true
+        end
+    end
+    return false
+end
+
+-- ============================================================
+-- IS REAL ITEM (универсальный)
 -- ============================================================
 local function IsRealItem(part)
-    local pe = part:FindFirstChildOfClass("ParticleEmitter")
-    if pe and pe.Enabled then return true end
+    if IsDoor(part) then return false end
+
+    if part:FindFirstChildOfClass("ParticleEmitter") then return true end
+
     for _, ch in ipairs(part:GetChildren()) do
         if ch:IsA("Script") and (ch.Name == "ItemPickupScript" or ch.Name == "NewItemPickupScript") then
             return true
         end
     end
+
+    for _, ch in ipairs(part:GetChildren()) do
+        if ch:IsA("RemoteEvent") and ch.Name == "ClickEvent" then return true end
+    end
+
+    local mesh = part:FindFirstChildOfClass("SpecialMesh")
+    if mesh and mesh.MeshId then
+        if CURRENT_GAME.meshNames[mesh.MeshId] or CURRENT_GAME.keyMeshIds[mesh.MeshId] then
+            return true
+        end
+    end
+
     local isSafe = IsInsideSafe(part)
     if isSafe then
-        local cd = part:FindFirstChildOfClass("ClickDetector")
-        if cd then return true end
+        if part:FindFirstChildOfClass("ClickDetector") then return true end
     end
+
+    local n = part.Name
+    if n and not n:match("^%-?%d+$") and n ~= "" then
+        local c = part.Parent
+        local depth = 0
+        while c and depth < 8 do
+            if c.Name == "LoadedMap" or c.Parent == workspace then
+                if part:FindFirstChildOfClass("ClickDetector") then return true end
+            end
+            c = c.Parent
+            depth = depth + 1
+        end
+    end
+
     return false
 end
 
@@ -225,13 +260,22 @@ local function IsAlreadyPickedUp(part)
     return false
 end
 
+-- ============================================================
+-- STABLE KEY (точнее — 0.1 + имя)
+-- ============================================================
 local function GetStableKey(part)
     local p = part.Position
     local mesh = part:FindFirstChildOfClass("SpecialMesh")
     local meshId = mesh and mesh.MeshId or ""
-    return string.format("%s_%.1f_%.1f_%.1f", meshId, p.X, p.Y, p.Z)
+    local x = math.floor(p.X * 10 + 0.5) / 10
+    local y = math.floor(p.Y * 10 + 0.5) / 10
+    local z = math.floor(p.Z * 10 + 0.5) / 10
+    return string.format("%s_%.1f_%.1f_%.1f_%s", meshId, x, y, z, part.Name)
 end
 
+-- ============================================================
+-- GET LIST ITEMS
+-- ============================================================
 local function GetListItems()
     local items = {}
     for _, obj in ipairs(workspace:GetDescendants()) do
@@ -422,7 +466,7 @@ ScanBtn.ZIndex = 10
 AddStroke(ScanBtn, THEME.MAIN, 2); AddTextStroke(ScanBtn)
 
 -- ============================================================
--- PROGRESS BAR (появляется при подборе)
+-- PROGRESS BAR
 -- ============================================================
 local ProgressFrame = Instance.new("Frame")
 ProgressFrame.Size = UDim2.new(1, -20, 0, 26)
@@ -457,7 +501,6 @@ ProgressLabel.ZIndex = 7
 ProgressLabel.Parent = ProgressFrame
 AddTextStroke(ProgressLabel)
 
--- Показ прогресса
 local function ShowProgress(text, currentTime, maxTime, color)
     ProgressFrame.Visible = true
     ProgressFrame.BorderColor3 = color or THEME.WARN
@@ -1075,10 +1118,8 @@ end
 local function FindKeyInBackpack()
     local char = LP.Character
     if not char then return nil end
-
     local tool = char:FindFirstChildOfClass("Tool")
     if tool and tool.Name:lower():find("key") then return tool end
-
     local bp = LP:FindFirstChild("Backpack")
     if bp then
         for _, item in ipairs(bp:GetChildren()) do
@@ -1087,7 +1128,6 @@ local function FindKeyInBackpack()
             end
         end
     end
-
     return nil
 end
 
@@ -1102,7 +1142,7 @@ local function EquipTool(tool)
 end
 
 -- ============================================================
--- TAKE ITEM (v4.1: прогресс + умные таймауты)
+-- TAKE ITEM (v4.3: ТП обратно ВСЕГДА)
 -- ============================================================
 local function TakeItem(item)
     if State.Picking then return end
@@ -1117,7 +1157,6 @@ local function TakeItem(item)
     local saved = hrp.CFrame
     local isSafe = item.isSafe
 
-    -- === СЕЙФ БЕЗ КЛЮЧА — сразу выход ===
     if isSafe then
         local key = FindKeyInBackpack()
         if not key then
@@ -1128,34 +1167,26 @@ local function TakeItem(item)
         EquipTool(key)
     end
 
-    -- ТП к предмету
     pcall(function() item.detector.MaxActivationDistance = math.huge end)
     hrp.CFrame = CFrame.new(item.part.Position + Vector3.new(0, 3, 0))
 
-    -- Таймаут: 5 сек обычные, 7 сек сейфы
     local maxTime = isSafe and 7 or 5
     local startTime = tick()
 
-    -- Первый клик
     task.wait(0.3)
     pcall(function()
-        if fireclickdetector then
-            fireclickdetector(item.detector)
-        end
+        if fireclickdetector then fireclickdetector(item.detector) end
     end)
 
-    -- Ждём подбора с прогрессом
     local picked = false
     while tick() - startTime < maxTime do
         local elapsed = tick() - startTime
         ShowProgress("Подбираю: " .. itemName, elapsed, maxTime, THEME.WARN)
 
-        -- Проверяем подобрался ли
         if not item.part.Parent then picked = true break end
         local pe = item.part:FindFirstChildOfClass("ParticleEmitter")
         if pe and not pe.Enabled and not isSafe then picked = true break end
 
-        -- Пробуем ещё раз кликнуть (иногда нужно несколько раз)
         if math.floor(elapsed * 2) % 2 == 0 then
             pcall(function() fireclickdetector(item.detector) end)
         end
@@ -1163,25 +1194,24 @@ local function TakeItem(item)
         task.wait(0.2)
     end
 
-    -- Финальная проверка
     if not picked then
         if not item.part.Parent then picked = true end
         local pe = item.part:FindFirstChildOfClass("ParticleEmitter")
         if pe and not pe.Enabled and not isSafe then picked = true end
     end
 
-    -- Показываем результат
+    -- ✅ ТП ОБРАТНО ВСЕГДА
+    hrp.CFrame = saved
+
     if picked then
         ShowProgress("✓ Подобрал: " .. itemName, maxTime, maxTime, THEME.OK)
         Notify("Took: " .. itemName, 2)
-        task.wait(0.5)
     else
         ShowProgress("✗ Не подобралось: " .. itemName, maxTime, maxTime, THEME.OFF)
         Notify("Не подобралось за " .. maxTime .. " сек — ТП обратно", 3)
-        hrp.CFrame = saved
-        task.wait(0.5)
     end
 
+    task.wait(0.5)
     HideProgress()
 
     task.delay(0.3, function()
@@ -1377,12 +1407,13 @@ ScanBtn.MouseButton1Click:Connect(function()
     RefreshItemList()
 end)
 
+-- ✅ СКАН КАЖДУЮ 1 СЕК
 task.spawn(function()
     task.wait(1)
     RefreshItemList()
 
     while true do
-        task.wait(5)
+        task.wait(1)
         if not scanInProgress and not State.Picking then
             RefreshItemList()
         end
