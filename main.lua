@@ -1,9 +1,8 @@
--- ========== XyqwPiggy v6.0 UNIVERSAL ==========
+-- ========== XyqwPiggy v6.1 UNIVERSAL ==========
 -- Piggy Script | made by Xyqwerq
--- Имена из part.Name (реальные игровые имена)
--- Book 1 + Book 2 | Стабильные ключи | ТП обратно
+-- Имена из part.Name | Gear fix | Стабильные ключи
 
-local VERSION = "6.0"
+local VERSION = "6.1"
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
@@ -12,9 +11,7 @@ local StarterGui        = game:GetService("StarterGui")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LP                = Players.LocalPlayer
 
--- ============================================================
 -- CONFIG
--- ============================================================
 local GAME_CONFIGS = {
     [4623386862] = { name = "Piggy Book 1" },
     [5661005779] = { name = "Piggy Book 2" },
@@ -25,9 +22,7 @@ if not CURRENT_GAME then
     CURRENT_GAME = { name = "Unknown Piggy (" .. game.PlaceId .. ")" }
 end
 
--- ============================================================
 -- THEME
--- ============================================================
 local THEME = {
     BG     = Color3.fromRGB(0, 0, 0),
     DARK   = Color3.fromRGB(40, 0, 0),
@@ -68,10 +63,7 @@ local function AddTextStroke(label)
 end
 
 -- ============================================================
--- GET ITEM NAME — ГЛАВНЫЙ ФИКС v6.0
--- 1) part.Name (если осмысленное) — РЕАЛЬНОЕ игровое имя
--- 2) Ключи — MeshId 456878024 + цвет
--- 3) Name Encrypted
+-- GET ITEM NAME (v6.1)
 -- ============================================================
 local function GetKeyNameByColor(c)
     local h, s, v = Color3.toHSV(c)
@@ -92,16 +84,29 @@ local function GetItemName(item)
     local part = item.part
     if not part then return "Unknown" end
 
-    -- ⭐ ГЛАВНОЕ: part.Name, если осмысленное
+    -- 1) part.Name если осмысленное
     local n = part.Name
     if n and n ~= "" and not n:match("^%-?%d+$") then
         return n
     end
 
-    -- Ключи по цвету
+    -- 2) MeshId mapping (ТОЧНО — до цветов!)
     local mesh = part:FindFirstChildOfClass("SpecialMesh")
     local meshId = mesh and mesh.MeshId or nil
 
+    if meshId == "rbxassetid://524706126" then return "Gear" end
+    if meshId == "rbxassetid://725833400" then return "Hammer" end
+    if meshId == "http://www.roblox.com/asset/?id=16198309" then return "Plank" end
+    if meshId == "http://www.roblox.com/asset/?id=72012879" then return "Battery" end
+    if meshId == "http://www.roblox.com/asset/?id=16884681" then return "Wrench" end
+    if meshId == "rbxassetid://6714051581" then return "Note" end
+    if meshId == "http://www.roblox.com/asset/?id=60791940" then return "Gear" end
+    if meshId == "http://www.roblox.com/asset/?id=12891705" then return "Wrench" end
+    if meshId == "http://www.roblox.com/asset/?id=70265804" then return "Screwdriver" end
+    if meshId == "http://www.roblox.com/asset/?id=36365830" then return "Gear" end
+    if meshId == "rbxassetid://1771168429" then return "Item" end
+
+    -- 3) Key — MeshId 456878024 + цвет
     if meshId == "rbxassetid://456878024" then
         local pe = part:FindFirstChildOfClass("ParticleEmitter")
         if pe and pe.Color and pe.Color.Keypoints and #pe.Color.Keypoints > 0 then
@@ -110,14 +115,7 @@ local function GetItemName(item)
         return "Key"
     end
 
-    -- PE.Color для неизвестных
-    local pe = part:FindFirstChildOfClass("ParticleEmitter")
-    if pe and pe.Color and pe.Color.Keypoints and #pe.Color.Keypoints > 0 then
-        local c = pe.Color.Keypoints[1].Value
-        local h, s, v = Color3.toHSV(c)
-        if s >= 0.3 then return GetKeyNameByColor(c) end
-    end
-
+    -- 4) Fallback — Name Encrypted (НЕ Key!)
     return "Name Encrypted"
 end
 
@@ -140,9 +138,7 @@ local function IsInMenu(part)
     return false
 end
 
--- ============================================================
 -- SAFE
--- ============================================================
 local SAFE_WORDS = {
     "safe", "locker", "vault", "cabinet", "fridge",
     "closet", "drawer", "crate", "longcrate", "chest",
@@ -162,9 +158,6 @@ local function IsInsideSafe(part)
     return false, nil
 end
 
--- ============================================================
--- IS DOOR (только NumericScript)
--- ============================================================
 local function IsDoor(part)
     for _, ch in ipairs(part:GetChildren()) do
         if ch:IsA("Script") and ch.Name:match("^%-?%d+$") then
@@ -174,28 +167,21 @@ local function IsDoor(part)
     return false
 end
 
--- ============================================================
--- IS REAL ITEM
--- ============================================================
 local function IsRealItem(part)
     if IsDoor(part) then return false end
 
-    -- ParticleEmitter
     if part:FindFirstChildOfClass("ParticleEmitter") then return true end
 
-    -- Скрипт подбора
     for _, ch in ipairs(part:GetChildren()) do
         if ch:IsA("Script") and (ch.Name == "ItemPickupScript" or ch.Name == "NewItemPickupScript") then
             return true
         end
     end
 
-    -- ClickEvent (Book 2)
     for _, ch in ipairs(part:GetChildren()) do
         if ch:IsA("RemoteEvent") and ch.Name == "ClickEvent" then return true end
     end
 
-    -- Внутри сейфа
     local isSafe = IsInsideSafe(part)
     if isSafe then
         if part:FindFirstChildOfClass("ClickDetector") then return true end
@@ -220,15 +206,18 @@ local function IsAlreadyPickedUp(part)
 end
 
 -- ============================================================
--- STABLE KEY — part.Name (уникально и НЕ меняется)
+-- STABLE KEY (v6.1) — MeshId + позиция (не part.Name!)
 -- ============================================================
 local function GetStableKey(part)
-    return part.Name
+    local mesh = part:FindFirstChildOfClass("SpecialMesh")
+    local meshId = mesh and mesh.MeshId or ""
+    local p = part.Position
+    local x = math.floor(p.X * 10 + 0.5) / 10
+    local y = math.floor(p.Y * 10 + 0.5) / 10
+    local z = math.floor(p.Z * 10 + 0.5) / 10
+    return string.format("%s_%.1f_%.1f_%.1f", meshId, x, y, z)
 end
 
--- ============================================================
--- GET LIST ITEMS
--- ============================================================
 local function GetListItems()
     local items = {}
     for _, obj in ipairs(workspace:GetDescendants()) do
@@ -257,9 +246,7 @@ local function GetListItems()
     return items
 end
 
--- ============================================================
 -- STATE
--- ============================================================
 local State = {
     ESP = { Items = false, Monster = false, Players = false },
     ToolIndicator = false,
@@ -268,9 +255,7 @@ local State = {
     Picking = false,
 }
 
--- ============================================================
 -- CLEANUP
--- ============================================================
 for _, obj in ipairs(CoreGui:GetChildren()) do
     if obj.Name == "XyqwPiggy" or obj.Name == "XyqwPiggyESP" then
         pcall(function() obj:Destroy() end)
@@ -283,9 +268,7 @@ for _, obj in ipairs(playerGui:GetChildren()) do
     end
 end
 
--- ============================================================
 -- SCREEN GUI
--- ============================================================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "XyqwPiggy"
 ScreenGui.ResetOnSpawn = false
@@ -295,9 +278,7 @@ ScreenGui.DisplayOrder = 999
 pcall(function() ScreenGui.Parent = CoreGui end)
 if not ScreenGui.Parent then ScreenGui.Parent = playerGui end
 
--- ============================================================
 -- MAIN FRAME
--- ============================================================
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 320, 0, 380)
 MainFrame.Position = UDim2.new(0.5, -160, 0.3, 0)
@@ -469,9 +450,7 @@ local function HideProgress()
     StatusLabel.TextColor3 = THEME.SUB
 end
 
--- ============================================================
 -- MISC FRAME
--- ============================================================
 local MiscFrame = Instance.new("Frame")
 MiscFrame.Size = UDim2.new(0, 220, 0, 250)
 MiscFrame.Position = UDim2.new(0.5, 180, 0.3, 0)
@@ -542,9 +521,7 @@ MiscScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
     lastScrollMisc = tick()
 end)
 
--- ============================================================
 -- DOCK
--- ============================================================
 local DockBtn = Instance.new("TextButton")
 DockBtn.Size = UDim2.new(0, 110, 0, 32)
 DockBtn.Position = UDim2.new(0.5, -55, 0.05, 42)
@@ -585,9 +562,7 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- ============================================================
 -- DRAG MAIN
--- ============================================================
 local mDrag, mStart, mStartPos = false, nil, nil
 TitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -641,9 +616,7 @@ CloseBtn.MouseButton1Click:Connect(function()
     MainFrame.Visible = false; MiscFrame.Visible = false; DockBtn.Visible = true
 end)
 
--- ============================================================
 -- ESP
--- ============================================================
 local ESPFolder = Instance.new("Folder")
 ESPFolder.Name = "XyqwPiggyESP"
 ESPFolder.Parent = CoreGui
@@ -807,9 +780,7 @@ local function EnableAntiTrap()
     end)
 end
 
--- ============================================================
 -- DELETE PIGGY
--- ============================================================
 local dPConn = nil
 local dPSaved = {}
 
@@ -880,9 +851,7 @@ local function DisableDeletePiggy()
     Notify("Delete Piggy: OFF (restored)", 2)
 end
 
--- ============================================================
 -- TOGGLE
--- ============================================================
 local function MakeToggle(name, getState, onToggle)
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1, -4, 0, 28)
@@ -995,9 +964,7 @@ MakeToggle("Anti-Trap", function() return State.AntiTrap end, function()
     if State.AntiTrap then EnableAntiTrap() end
 end)
 
--- ============================================================
 -- 3D VIEW
--- ============================================================
 local currentItems = {}
 local spinningModels = {}
 local scanInProgress = false
@@ -1063,9 +1030,7 @@ local function Create3DView(part, vpf)
     end)
 end
 
--- ============================================================
 -- HELPERS
--- ============================================================
 local function FindKeyInBackpack()
     local char = LP.Character
     if not char then return nil end
@@ -1092,9 +1057,7 @@ local function EquipTool(tool)
     return true
 end
 
--- ============================================================
 -- TAKE ITEM
--- ============================================================
 local function TakeItem(item)
     if State.Picking then return end
     State.Picking = true
@@ -1171,9 +1134,7 @@ local function TakeItem(item)
     State.Picking = false
 end
 
--- ============================================================
--- REFRESH LIST — имя из GetItemName, кеша НЕТ
--- ============================================================
+-- REFRESH
 function RefreshItemList()
     if scanInProgress then return end
     scanInProgress = true
@@ -1195,7 +1156,6 @@ function RefreshItemList()
         newKeys[item.key] = true
     end
 
-    -- Удаляем устаревшие
     for key, row in pairs(existingRows) do
         if not newKeys[key] then
             row:Destroy()
@@ -1203,7 +1163,6 @@ function RefreshItemList()
         end
     end
 
-    -- Создаём новые
     for i, item in ipairs(currentItems) do
         local row = existingRows[item.key]
 
@@ -1307,7 +1266,6 @@ function RefreshItemList()
                 end
             end)
         end
-        -- Существующая строка — НЕ ТРОГАЕМ
     end
 
     task.defer(function()
@@ -1327,9 +1285,7 @@ RunService.RenderStepped:Connect(function(dt)
     end
 end)
 
--- ============================================================
 -- SEARCH
--- ============================================================
 SearchBar:GetPropertyChangedSignal("Text"):Connect(function()
     local q = (SearchBar.Text or ""):lower()
     for _, row in ipairs(ItemScroll:GetChildren()) do
@@ -1344,9 +1300,7 @@ SearchBar:GetPropertyChangedSignal("Text"):Connect(function()
     end
 end)
 
--- ============================================================
 -- SCAN
--- ============================================================
 ScanBtn.MouseButton1Click:Connect(function()
     Notify("Scanning...", 2)
     task.wait(0.3)
@@ -1365,9 +1319,7 @@ task.spawn(function()
     end
 end)
 
--- ============================================================
 -- RESIZE
--- ============================================================
 local RS = Instance.new("TextButton")
 RS.Size = UDim2.new(0, 14, 0, 14)
 RS.Position = UDim2.new(1, -16, 1, -16)
@@ -1399,9 +1351,7 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- ============================================================
 -- CLEANUP
--- ============================================================
 game:BindToClose(function()
     for obj, data in pairs(dPSaved) do
         pcall(function()
