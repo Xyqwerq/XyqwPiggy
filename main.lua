@@ -1,14 +1,15 @@
--- ========== XyqwPiggy v3.2 UNIVERSAL ==========
+-- ========== XyqwPiggy v4.1 UNIVERSAL ==========
 -- Piggy Script | made by Xyqwerq
 -- Book 1 (4623386862) + Book 2 (5661005779)
--- Delete Piggy с восстановлением | Красный текст
+-- Умные сейфы | Прогресс-бар подбора | Name Encrypted
 
-local VERSION = "3.2"
+local VERSION = "4.1"
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
 local CoreGui           = game:GetService("CoreGui")
 local StarterGui        = game:GetService("StarterGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LP                = Players.LocalPlayer
 
 -- ============================================================
@@ -27,18 +28,20 @@ local GAME_CONFIGS = {
             ["rbxassetid://6714051581"]                   = "Note",
             ["http://www.roblox.com/asset/?id=60791940"]  = "Gear",
         },
-        keyMeshIds = {
-            ["rbxassetid://456878024"] = true,
-        },
+        keyMeshIds = { ["rbxassetid://456878024"] = true },
     },
     [5661005779] = {
         name = "Piggy Book 2",
         meshNames = {
-            -- Заполним после диагностики Book 2
+            ["rbxassetid://456878024"]                    = "Key",
+            ["http://www.roblox.com/asset/?id=16198309"]  = "Plank",
+            ["http://www.roblox.com/asset/?id=16884681"]  = "Tool",
+            ["http://www.roblox.com/asset/?id=12891705"]  = "Wrench",
+            ["http://www.roblox.com/asset/?id=70265804"]  = "Screwdriver",
+            ["http://www.roblox.com/asset/?id=36365830"]  = "Gear",
+            ["rbxassetid://1771168429"]                   = "Item",
         },
-        keyMeshIds = {
-            -- Заполним после диагностики Book 2
-        },
+        keyMeshIds = { ["rbxassetid://456878024"] = true },
     },
 }
 
@@ -47,7 +50,7 @@ if not CURRENT_GAME then
     CURRENT_GAME = {
         name = "Unknown Piggy (" .. game.PlaceId .. ")",
         meshNames = {},
-        keyMeshIds = {},
+        keyMeshIds = { ["rbxassetid://456878024"] = true },
     }
 end
 
@@ -64,6 +67,8 @@ local THEME = {
     OFF    = Color3.fromRGB(220, 0, 0),
     STROKE = Color3.fromRGB(120, 0, 0),
     ITEM   = Color3.fromRGB(255, 0, 0),
+    WARN   = Color3.fromRGB(255, 200, 0),
+    OK     = Color3.fromRGB(0, 255, 100),
 }
 
 local function Notify(text, duration)
@@ -129,14 +134,9 @@ local function GetItemName(item)
     end
 
     local n = part.Name
-    if n and n ~= "" and not n:match("^%-?%d+$") then
-        return n
-    end
+    if n and n ~= "" and not n:match("^%-?%d+$") then return n end
 
-    if meshId then
-        local id = meshId:match("id=(%d+)") or meshId:match("assetid://(%d+)")
-        if id then return "Item (" .. id .. ")" end
-    end
+    if meshId then return "Name Encrypted" end
 
     local pe = part:FindFirstChildOfClass("ParticleEmitter")
     if pe and pe.Color and pe.Color.Keypoints and #pe.Color.Keypoints > 0 then
@@ -170,20 +170,20 @@ end
 -- ============================================================
 -- SAFE DETECTION
 -- ============================================================
-local SAFE_KEYWORDS = {
-    "safe", "container", "locker", "box", "chest", "cabinet",
-    "crate", "drawer", "vault", "storage", "bin", "bag",
-    "suitcase", "briefcase", "fridge", "closet", "store",
-    "shelf", "rack", "cage", "cell",
+local SAFE_WORDS = {
+    "safe", "locker", "vault", "cabinet", "fridge",
+    "closet", "drawer", "crate", "longcrate", "chest",
 }
 
 local function IsInsideSafe(part)
     local c = part
     local depth = 0
-    while c and depth < 10 do
+    while c and depth < 8 do
         local n = c.Name:lower()
-        for _, kw in ipairs(SAFE_KEYWORDS) do
-            if n:find(kw, 1, true) then return true, c end
+        for _, kw in ipairs(SAFE_WORDS) do
+            if n == kw or n:find(kw, 1, true) then
+                return true, c
+            end
         end
         c = c.Parent
         depth = depth + 1
@@ -198,7 +198,9 @@ local function IsRealItem(part)
     local pe = part:FindFirstChildOfClass("ParticleEmitter")
     if pe and pe.Enabled then return true end
     for _, ch in ipairs(part:GetChildren()) do
-        if ch:IsA("Script") and ch.Name == "ItemPickupScript" then return true end
+        if ch:IsA("Script") and (ch.Name == "ItemPickupScript" or ch.Name == "NewItemPickupScript") then
+            return true
+        end
     end
     local isSafe = IsInsideSafe(part)
     if isSafe then
@@ -237,11 +239,14 @@ local function GetListItems()
             local part = obj.Parent
             if part and part:IsA("BasePart") and not IsInMenu(part) then
                 if IsRealItem(part) and not IsAlreadyPickedUp(part) then
+                    local isSafe, safeParent = IsInsideSafe(part)
                     table.insert(items, {
                         part = part,
                         detector = obj,
                         key = GetStableKey(part),
                         pos = part.Position,
+                        isSafe = isSafe,
+                        safeParent = safeParent,
                     })
                 end
             end
@@ -263,6 +268,7 @@ local State = {
     ToolIndicator = false,
     AntiTrap = false,
     DeletePiggy = false,
+    Picking = false,
 }
 
 -- ============================================================
@@ -396,7 +402,7 @@ StatusLabel.BackgroundTransparency = 1
 StatusLabel.Text = "Items: 0"
 StatusLabel.TextColor3 = THEME.SUB
 StatusLabel.TextSize = 11
-StatusLabel.Font = Enum.Font.Gotham
+StatusLabel.Font = Enum.Font.GothamBold
 StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
 StatusLabel.Parent = MainFrame
 
@@ -414,6 +420,60 @@ ScanBtn.Parent = MainFrame
 ScanBtn.AutoButtonColor = false
 ScanBtn.ZIndex = 10
 AddStroke(ScanBtn, THEME.MAIN, 2); AddTextStroke(ScanBtn)
+
+-- ============================================================
+-- PROGRESS BAR (появляется при подборе)
+-- ============================================================
+local ProgressFrame = Instance.new("Frame")
+ProgressFrame.Size = UDim2.new(1, -20, 0, 26)
+ProgressFrame.Position = UDim2.new(0, 10, 1, -94)
+ProgressFrame.BackgroundColor3 = THEME.DARK
+ProgressFrame.BorderSizePixel = 1
+ProgressFrame.BorderColor3 = THEME.WARN
+ProgressFrame.Visible = false
+ProgressFrame.Parent = MainFrame
+ProgressFrame.ZIndex = 5
+local PFC = Instance.new("UICorner"); PFC.CornerRadius = UDim.new(0, 6); PFC.Parent = ProgressFrame
+AddStroke(ProgressFrame, THEME.WARN, 1.5)
+
+local ProgressFill = Instance.new("Frame")
+ProgressFill.Size = UDim2.new(0, 0, 1, 0)
+ProgressFill.BackgroundColor3 = THEME.WARN
+ProgressFill.BorderSizePixel = 0
+ProgressFill.Parent = ProgressFrame
+ProgressFill.ZIndex = 6
+local PFillC = Instance.new("UICorner"); PFillC.CornerRadius = UDim.new(0, 6); PFillC.Parent = ProgressFill
+
+local ProgressLabel = Instance.new("TextLabel")
+ProgressLabel.Size = UDim2.new(1, -8, 1, 0)
+ProgressLabel.Position = UDim2.new(0, 4, 0, 0)
+ProgressLabel.BackgroundTransparency = 1
+ProgressLabel.Text = ""
+ProgressLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+ProgressLabel.TextSize = 11
+ProgressLabel.Font = Enum.Font.GothamBold
+ProgressLabel.TextXAlignment = Enum.TextXAlignment.Left
+ProgressLabel.ZIndex = 7
+ProgressLabel.Parent = ProgressFrame
+AddTextStroke(ProgressLabel)
+
+-- Показ прогресса
+local function ShowProgress(text, currentTime, maxTime, color)
+    ProgressFrame.Visible = true
+    ProgressFrame.BorderColor3 = color or THEME.WARN
+    ProgressFill.BackgroundColor3 = color or THEME.WARN
+    local pct = math.clamp(currentTime / maxTime, 0, 1)
+    ProgressFill.Size = UDim2.new(pct, 0, 1, 0)
+    ProgressLabel.Text = string.format("%s (%.1f / %.1f сек)", text, currentTime, maxTime)
+    StatusLabel.Text = string.format("%s (%.1f сек)", text, currentTime)
+    StatusLabel.TextColor3 = color or THEME.WARN
+end
+
+local function HideProgress()
+    ProgressFrame.Visible = false
+    ProgressFill.Size = UDim2.new(0, 0, 1, 0)
+    StatusLabel.TextColor3 = THEME.SUB
+end
 
 -- ============================================================
 -- MISC FRAME
@@ -963,7 +1023,8 @@ local function Create3DView(part, vpf)
             or ch:IsA("BillboardGui") or ch:IsA("SurfaceGui") or ch:IsA("Sound")
             or ch:IsA("SelectionBox") or ch:IsA("Highlight") or ch:IsA("ForceField")
             or ch:IsA("Fire") or ch:IsA("Smoke") or ch:IsA("Sparkles")
-            or ch:IsA("PointLight") or ch:IsA("SpotLight") or ch:IsA("SurfaceLight") then
+            or ch:IsA("PointLight") or ch:IsA("SpotLight") or ch:IsA("SurfaceLight")
+            or ch:IsA("RemoteEvent") or ch:IsA("RemoteFunction") then
                 ch:Destroy()
             end
         end
@@ -1009,41 +1070,125 @@ local function Create3DView(part, vpf)
 end
 
 -- ============================================================
--- TAKE ITEM
+-- HELPERS: ключ
+-- ============================================================
+local function FindKeyInBackpack()
+    local char = LP.Character
+    if not char then return nil end
+
+    local tool = char:FindFirstChildOfClass("Tool")
+    if tool and tool.Name:lower():find("key") then return tool end
+
+    local bp = LP:FindFirstChild("Backpack")
+    if bp then
+        for _, item in ipairs(bp:GetChildren()) do
+            if item:IsA("Tool") and item.Name:lower():find("key") then
+                return item
+            end
+        end
+    end
+
+    return nil
+end
+
+local function EquipTool(tool)
+    local char = LP.Character
+    if not char then return false end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return false end
+    pcall(function() hum:EquipTool(tool) end)
+    task.wait(0.2)
+    return true
+end
+
+-- ============================================================
+-- TAKE ITEM (v4.1: прогресс + умные таймауты)
 -- ============================================================
 local function TakeItem(item)
-    local char = LP.Character
-    if not char then Notify("No character!", 2) return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then Notify("No HRP!", 2) return end
+    if State.Picking then return end
+    State.Picking = true
 
+    local char = LP.Character
+    if not char then State.Picking = false; return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then State.Picking = false; return end
+
+    local itemName = GetItemName(item)
     local saved = hrp.CFrame
+    local isSafe = item.isSafe
+
+    -- === СЕЙФ БЕЗ КЛЮЧА — сразу выход ===
+    if isSafe then
+        local key = FindKeyInBackpack()
+        if not key then
+            Notify("Ключ для сейфа не найден!", 3)
+            State.Picking = false
+            return
+        end
+        EquipTool(key)
+    end
+
+    -- ТП к предмету
     pcall(function() item.detector.MaxActivationDistance = math.huge end)
     hrp.CFrame = CFrame.new(item.part.Position + Vector3.new(0, 3, 0))
-    task.wait(0.3)
 
-    local fired = false
+    -- Таймаут: 5 сек обычные, 7 сек сейфы
+    local maxTime = isSafe and 7 or 5
+    local startTime = tick()
+
+    -- Первый клик
+    task.wait(0.3)
     pcall(function()
         if fireclickdetector then
             fireclickdetector(item.detector)
-            fired = true
         end
     end)
 
-    task.wait(0.25)
-    hrp.CFrame = saved
+    -- Ждём подбора с прогрессом
+    local picked = false
+    while tick() - startTime < maxTime do
+        local elapsed = tick() - startTime
+        ShowProgress("Подбираю: " .. itemName, elapsed, maxTime, THEME.WARN)
 
-    if fired then
-        Notify("Took: " .. GetItemName(item), 2)
-    else
-        Notify("Cannot take: " .. GetItemName(item), 2)
+        -- Проверяем подобрался ли
+        if not item.part.Parent then picked = true break end
+        local pe = item.part:FindFirstChildOfClass("ParticleEmitter")
+        if pe and not pe.Enabled and not isSafe then picked = true break end
+
+        -- Пробуем ещё раз кликнуть (иногда нужно несколько раз)
+        if math.floor(elapsed * 2) % 2 == 0 then
+            pcall(function() fireclickdetector(item.detector) end)
+        end
+
+        task.wait(0.2)
     end
 
-    task.delay(0.5, function()
-        if not scanInProgress then
-            RefreshItemList()
-        end
+    -- Финальная проверка
+    if not picked then
+        if not item.part.Parent then picked = true end
+        local pe = item.part:FindFirstChildOfClass("ParticleEmitter")
+        if pe and not pe.Enabled and not isSafe then picked = true end
+    end
+
+    -- Показываем результат
+    if picked then
+        ShowProgress("✓ Подобрал: " .. itemName, maxTime, maxTime, THEME.OK)
+        Notify("Took: " .. itemName, 2)
+        task.wait(0.5)
+    else
+        ShowProgress("✗ Не подобралось: " .. itemName, maxTime, maxTime, THEME.OFF)
+        Notify("Не подобралось за " .. maxTime .. " сек — ТП обратно", 3)
+        hrp.CFrame = saved
+        task.wait(0.5)
+    end
+
+    HideProgress()
+
+    task.delay(0.3, function()
+        if not scanInProgress then RefreshItemList() end
     end)
+
+    State.Picking = false
 end
 
 -- ============================================================
@@ -1173,9 +1318,7 @@ function RefreshItemList()
                                     break
                                 end
                             end
-                            if curItem then
-                                TakeItem(curItem)
-                            end
+                            if curItem then TakeItem(curItem) end
                         end
                     end
                     pressPos = nil
@@ -1240,7 +1383,7 @@ task.spawn(function()
 
     while true do
         task.wait(5)
-        if not scanInProgress then
+        if not scanInProgress and not State.Picking then
             RefreshItemList()
         end
     end
