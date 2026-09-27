@@ -1,8 +1,9 @@
--- ========== XyqwPiggy v5.0 UNIVERSAL ==========
+-- ========== XyqwPiggy v6.0 UNIVERSAL ==========
 -- Piggy Script | made by Xyqwerq
--- Book 1 + Book 2 | Стабильные имена через GetFullName | Кеш имён
+-- Имена из part.Name (реальные игровые имена)
+-- Book 1 + Book 2 | Стабильные ключи | ТП обратно
 
-local VERSION = "5.0"
+local VERSION = "6.0"
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
@@ -15,42 +16,13 @@ local LP                = Players.LocalPlayer
 -- CONFIG
 -- ============================================================
 local GAME_CONFIGS = {
-    [4623386862] = {
-        name = "Piggy Book 1",
-        meshNames = {
-            ["rbxassetid://725833400"]                    = "Hammer",
-            ["rbxassetid://456878024"]                    = "Key",
-            ["rbxassetid://524706126"]                    = "Gear",
-            ["http://www.roblox.com/asset/?id=16884681"]  = "Tool",
-            ["http://www.roblox.com/asset/?id=16198309"]  = "Plank",
-            ["http://www.roblox.com/asset/?id=72012879"]  = "Battery",
-            ["rbxassetid://6714051581"]                   = "Note",
-            ["http://www.roblox.com/asset/?id=60791940"]  = "Gear",
-        },
-        keyMeshIds = { ["rbxassetid://456878024"] = true },
-    },
-    [5661005779] = {
-        name = "Piggy Book 2",
-        meshNames = {
-            ["rbxassetid://456878024"]                    = "Key",
-            ["http://www.roblox.com/asset/?id=16198309"]  = "Plank",
-            ["http://www.roblox.com/asset/?id=16884681"]  = "Tool",
-            ["http://www.roblox.com/asset/?id=12891705"]  = "Wrench",
-            ["http://www.roblox.com/asset/?id=70265804"]  = "Screwdriver",
-            ["http://www.roblox.com/asset/?id=36365830"]  = "Gear",
-            ["rbxassetid://1771168429"]                   = "Item",
-        },
-        keyMeshIds = { ["rbxassetid://456878024"] = true },
-    },
+    [4623386862] = { name = "Piggy Book 1" },
+    [5661005779] = { name = "Piggy Book 2" },
 }
 
 local CURRENT_GAME = GAME_CONFIGS[game.PlaceId]
 if not CURRENT_GAME then
-    CURRENT_GAME = {
-        name = "Unknown Piggy (" .. game.PlaceId .. ")",
-        meshNames = {},
-        keyMeshIds = { ["rbxassetid://456878024"] = true },
-    }
+    CURRENT_GAME = { name = "Unknown Piggy (" .. game.PlaceId .. ")" }
 end
 
 -- ============================================================
@@ -96,7 +68,10 @@ local function AddTextStroke(label)
 end
 
 -- ============================================================
--- GET ITEM NAME
+-- GET ITEM NAME — ГЛАВНЫЙ ФИКС v6.0
+-- 1) part.Name (если осмысленное) — РЕАЛЬНОЕ игровое имя
+-- 2) Ключи — MeshId 456878024 + цвет
+-- 3) Name Encrypted
 -- ============================================================
 local function GetKeyNameByColor(c)
     local h, s, v = Color3.toHSV(c)
@@ -117,10 +92,17 @@ local function GetItemName(item)
     local part = item.part
     if not part then return "Unknown" end
 
+    -- ⭐ ГЛАВНОЕ: part.Name, если осмысленное
+    local n = part.Name
+    if n and n ~= "" and not n:match("^%-?%d+$") then
+        return n
+    end
+
+    -- Ключи по цвету
     local mesh = part:FindFirstChildOfClass("SpecialMesh")
     local meshId = mesh and mesh.MeshId or nil
 
-    if meshId and CURRENT_GAME.keyMeshIds[meshId] then
+    if meshId == "rbxassetid://456878024" then
         local pe = part:FindFirstChildOfClass("ParticleEmitter")
         if pe and pe.Color and pe.Color.Keypoints and #pe.Color.Keypoints > 0 then
             return GetKeyNameByColor(pe.Color.Keypoints[1].Value)
@@ -128,13 +110,7 @@ local function GetItemName(item)
         return "Key"
     end
 
-    if meshId and CURRENT_GAME.meshNames[meshId] then
-        return CURRENT_GAME.meshNames[meshId]
-    end
-
-    local n = part.Name
-    if n and n ~= "" and not n:match("^%-?%d+$") then return n end
-
+    -- PE.Color для неизвестных
     local pe = part:FindFirstChildOfClass("ParticleEmitter")
     if pe and pe.Color and pe.Color.Keypoints and #pe.Color.Keypoints > 0 then
         local c = pe.Color.Keypoints[1].Value
@@ -187,7 +163,7 @@ local function IsInsideSafe(part)
 end
 
 -- ============================================================
--- IS DOOR
+-- IS DOOR (только NumericScript)
 -- ============================================================
 local function IsDoor(part)
     for _, ch in ipairs(part:GetChildren()) do
@@ -204,25 +180,22 @@ end
 local function IsRealItem(part)
     if IsDoor(part) then return false end
 
+    -- ParticleEmitter
     if part:FindFirstChildOfClass("ParticleEmitter") then return true end
 
+    -- Скрипт подбора
     for _, ch in ipairs(part:GetChildren()) do
         if ch:IsA("Script") and (ch.Name == "ItemPickupScript" or ch.Name == "NewItemPickupScript") then
             return true
         end
     end
 
+    -- ClickEvent (Book 2)
     for _, ch in ipairs(part:GetChildren()) do
         if ch:IsA("RemoteEvent") and ch.Name == "ClickEvent" then return true end
     end
 
-    local mesh = part:FindFirstChildOfClass("SpecialMesh")
-    if mesh and mesh.MeshId then
-        if CURRENT_GAME.meshNames[mesh.MeshId] or CURRENT_GAME.keyMeshIds[mesh.MeshId] then
-            return true
-        end
-    end
-
+    -- Внутри сейфа
     local isSafe = IsInsideSafe(part)
     if isSafe then
         if part:FindFirstChildOfClass("ClickDetector") then return true end
@@ -247,16 +220,10 @@ local function IsAlreadyPickedUp(part)
 end
 
 -- ============================================================
--- STABLE KEY — через GetFullName (уникально ВСЕГДА)
+-- STABLE KEY — part.Name (уникально и НЕ меняется)
 -- ============================================================
 local function GetStableKey(part)
-    -- GetFullName уникален и НЕ меняется
-    local ok, fullName = pcall(function() return part:GetFullName() end)
-    if ok and fullName and fullName ~= "" then
-        return fullName
-    end
-    -- fallback
-    return tostring(part)
+    return part.Name
 end
 
 -- ============================================================
@@ -277,7 +244,6 @@ local function GetListItems()
                         pos = part.Position,
                         isSafe = isSafe,
                         safeParent = safeParent,
-                        cachedName = nil,  -- кеш имени
                     })
                 end
             end
@@ -452,9 +418,7 @@ ScanBtn.AutoButtonColor = false
 ScanBtn.ZIndex = 10
 AddStroke(ScanBtn, THEME.MAIN, 2); AddTextStroke(ScanBtn)
 
--- ============================================================
 -- PROGRESS
--- ============================================================
 local ProgressFrame = Instance.new("Frame")
 ProgressFrame.Size = UDim2.new(1, -20, 0, 26)
 ProgressFrame.Position = UDim2.new(0, 10, 1, -94)
@@ -1190,10 +1154,10 @@ local function TakeItem(item)
     hrp.CFrame = saved
 
     if picked then
-        ShowProgress("✓ Подобрал: " .. itemName, maxTime, maxTime, THEME.OK)
+        ShowProgress("OK Подобрал: " .. itemName, maxTime, maxTime, THEME.OK)
         Notify("Took: " .. itemName, 2)
     else
-        ShowProgress("✗ Не подобралось: " .. itemName, maxTime, maxTime, THEME.OFF)
+        ShowProgress("X Не подобралось: " .. itemName, maxTime, maxTime, THEME.OFF)
         Notify("Не подобралось за " .. maxTime .. " сек — ТП обратно", 3)
     end
 
@@ -1208,10 +1172,8 @@ local function TakeItem(item)
 end
 
 -- ============================================================
--- REFRESH LIST (кеш имён — НЕ пересчитываем если ключ тот же)
+-- REFRESH LIST — имя из GetItemName, кеша НЕТ
 -- ============================================================
-local nameCache = {}  -- [key] = name
-
 function RefreshItemList()
     if scanInProgress then return end
     scanInProgress = true
@@ -1238,19 +1200,12 @@ function RefreshItemList()
         if not newKeys[key] then
             row:Destroy()
             existingRows[key] = nil
-            nameCache[key] = nil  -- чистим кеш
         end
     end
 
+    -- Создаём новые
     for i, item in ipairs(currentItems) do
         local row = existingRows[item.key]
-
-        -- Имя из кеша или вычисляем
-        local itemName = nameCache[item.key]
-        if not itemName then
-            itemName = GetItemName(item)
-            nameCache[item.key] = itemName
-        end
 
         if not row then
             row = Instance.new("TextButton")
@@ -1281,6 +1236,7 @@ function RefreshItemList()
 
             Create3DView(item.part, vpf)
 
+            local itemName = GetItemName(item)
             row:SetAttribute("ItemName", itemName)
 
             local nl = Instance.new("TextLabel")
@@ -1351,7 +1307,7 @@ function RefreshItemList()
                 end
             end)
         end
-        -- Имя НЕ обновляем если строка уже есть (кеш гарантирует правильность)
+        -- Существующая строка — НЕ ТРОГАЕМ
     end
 
     task.defer(function()
