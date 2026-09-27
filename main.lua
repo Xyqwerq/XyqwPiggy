@@ -1067,7 +1067,9 @@ local function TakeItem(item)
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hrp then State.Picking = false; return end
 
-    local itemName = GetItemName(item)
+    -- ⭐ Берём имя из item.name (правильное) или вычисляем
+    local itemName = item.name or GetItemName(item)
+
     local saved = hrp.CFrame
     local isSafe = item.isSafe
 
@@ -1133,7 +1135,6 @@ local function TakeItem(item)
 
     State.Picking = false
 end
-
 -- REFRESH
 function RefreshItemList()
     if scanInProgress then return end
