@@ -1,14 +1,14 @@
-print("[XyqwPiggy] Loading v7.3...")
+print("[XyqwPiggy] Loading v7.4...")
 
 local _ok, _err = pcall(function()
 
 -- ============================================================
--- XyqwPiggy v7.3
+-- XyqwPiggy v7.4
 -- Author: Xyqwerq
--- AutoFarm loaded separately from XyqwAutoFarm.lua
+-- Modules: XyqwAutoFarm, XyqwSkinChanger
 -- ============================================================
 
-local VERSION = "7.3"
+local VERSION = "7.4"
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
@@ -28,6 +28,8 @@ local THEME = {
     STROKE = Color3.fromRGB(120, 0, 0),
     OK     = Color3.fromRGB(0, 255, 100),
     GOLD   = Color3.fromRGB(255, 215, 0),
+    YELLOW = Color3.fromRGB(255, 220, 0),
+    CYAN   = Color3.fromRGB(0, 220, 255),
 }
 
 local function Notify(text, duration)
@@ -121,7 +123,6 @@ local State = {
 _G.__XyqwPiggyLastScroll = 0
 _G.__XyqwPiggyScrolling = false
 
--- CLEANUP
 for _, obj in ipairs(CoreGui:GetChildren()) do
     if obj.Name == "XyqwPiggy" or obj.Name == "XyqwPiggyESP" then
         pcall(function() obj:Destroy() end)
@@ -134,7 +135,6 @@ for _, obj in ipairs(playerGui:GetChildren()) do
     end
 end
 
--- BALANCE
 local function GetPiggyCoins()
     local pg = LP:FindFirstChild("PlayerGui")
     if pg then
@@ -174,7 +174,8 @@ DockBtn.Position = UDim2.new(0.03, 0, 0.15, 0)
 DockBtn.BackgroundColor3 = THEME.BG
 DockBtn.TextColor3 = THEME.MAIN
 DockBtn.Text = "XyqwPiggy"
-DockBtn.TextScaled = true
+DockBtn.TextScaled = false
+DockBtn.TextSize = 16
 DockBtn.Font = Enum.Font.GothamBold
 DockBtn.BorderSizePixel = 0
 DockBtn.Parent = ScreenGui
@@ -183,9 +184,7 @@ DockBtn.ZIndex = 1000
 local DBC = Instance.new("UICorner"); DBC.CornerRadius = UDim.new(0, 12); DBC.Parent = DockBtn
 AddStroke(DockBtn, THEME.MAIN, 2); AddTextStroke(DockBtn)
 
--- ============================================================
--- MAIN FRAME (280x340)
--- ============================================================
+-- MAIN FRAME
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 280, 0, 340)
 MainFrame.Position = UDim2.new(0.5, -140, 0.3, 0)
@@ -197,7 +196,7 @@ MainFrame.Visible = false
 MainFrame.Parent = ScreenGui
 local MC = Instance.new("UICorner"); MC.CornerRadius = UDim.new(0, 10); MC.Parent = MainFrame
 
--- TITLE BAR
+-- TITLE
 local TitleBar = Instance.new("Frame")
 TitleBar.Size = UDim2.new(1, 0, 0, 28)
 TitleBar.BackgroundColor3 = THEME.TITLE
@@ -211,7 +210,8 @@ TitleLabel.Position = UDim2.new(0, 8, 0, 0)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Text = "XyqwPiggy v" .. VERSION
 TitleLabel.TextColor3 = THEME.MAIN
-TitleLabel.TextScaled = true
+TitleLabel.TextScaled = false
+TitleLabel.TextSize = 16
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = TitleBar
@@ -223,7 +223,8 @@ MiscBtn.Position = UDim2.new(1, -62, 0.5, -11)
 MiscBtn.BackgroundColor3 = THEME.DARK
 MiscBtn.TextColor3 = THEME.MAIN
 MiscBtn.Text = "MISC"
-MiscBtn.TextScaled = true
+MiscBtn.TextScaled = false
+MiscBtn.TextSize = 12
 MiscBtn.Font = Enum.Font.GothamBold
 MiscBtn.BorderSizePixel = 1
 MiscBtn.BorderColor3 = THEME.MAIN
@@ -238,7 +239,8 @@ CloseBtn.Position = UDim2.new(1, -24, 0.5, -11)
 CloseBtn.BackgroundColor3 = THEME.DARK
 CloseBtn.TextColor3 = THEME.MAIN
 CloseBtn.Text = "X"
-CloseBtn.TextScaled = true
+CloseBtn.TextScaled = false
+CloseBtn.TextSize = 14
 CloseBtn.Font = Enum.Font.GothamBold
 CloseBtn.BorderSizePixel = 1
 CloseBtn.BorderColor3 = THEME.MAIN
@@ -264,7 +266,8 @@ BalanceLabel.Position = UDim2.new(0, 4, 0, 0)
 BalanceLabel.BackgroundTransparency = 1
 BalanceLabel.Text = "Piggy Coins: ..."
 BalanceLabel.TextColor3 = THEME.GOLD
-BalanceLabel.TextScaled = true
+BalanceLabel.TextScaled = false
+BalanceLabel.TextSize = 14
 BalanceLabel.Font = Enum.Font.GothamBold
 BalanceLabel.TextXAlignment = Enum.TextXAlignment.Left
 BalanceLabel.Parent = BalanceFrame
@@ -279,7 +282,7 @@ SearchBar.PlaceholderText = "Search items..."
 SearchBar.PlaceholderColor3 = THEME.SUB
 SearchBar.Text = ""
 SearchBar.TextColor3 = THEME.MAIN
-SearchBar.TextSize = 12
+SearchBar.TextSize = 13
 SearchBar.Font = Enum.Font.Gotham
 SearchBar.ClearTextOnFocus = false
 SearchBar.BorderSizePixel = 1
@@ -317,7 +320,8 @@ InfoLabel.Position = UDim2.new(0, 8, 1, -46)
 InfoLabel.BackgroundColor3 = THEME.DARK
 InfoLabel.TextColor3 = THEME.MAIN
 InfoLabel.Text = "0 items"
-InfoLabel.TextScaled = true
+InfoLabel.TextScaled = false
+InfoLabel.TextSize = 13
 InfoLabel.Font = Enum.Font.GothamBold
 InfoLabel.BorderSizePixel = 1
 InfoLabel.BorderColor3 = THEME.MAIN
@@ -339,7 +343,8 @@ local function MakeBtn(name, x, w)
     btn.BackgroundColor3 = THEME.DARK
     btn.TextColor3 = THEME.MAIN
     btn.Text = name
-    btn.TextScaled = true
+    btn.TextScaled = false
+    btn.TextSize = 13
     btn.Font = Enum.Font.GothamBold
     btn.BorderSizePixel = 1
     btn.BorderColor3 = THEME.MAIN
@@ -355,9 +360,7 @@ local OpenGameBtn = MakeBtn("Menu", 0.25, 0.24)
 local RefreshBalBtn = MakeBtn("Balance", 0.50, 0.24)
 local ResetBtn = MakeBtn("Reset", 0.75, 0.24)
 
--- ============================================================
--- MISC FRAME (230x320)
--- ============================================================
+-- MISC FRAME
 local MiscFrame = Instance.new("Frame")
 MiscFrame.Name = "MiscFrame"
 MiscFrame.Size = UDim2.new(0, 230, 0, 320)
@@ -384,7 +387,8 @@ MiscTitle.Position = UDim2.new(0, 8, 0, 0)
 MiscTitle.BackgroundTransparency = 1
 MiscTitle.Text = "Misc"
 MiscTitle.TextColor3 = THEME.MAIN
-MiscTitle.TextScaled = true
+MiscTitle.TextScaled = false
+MiscTitle.TextSize = 14
 MiscTitle.Font = Enum.Font.GothamBold
 MiscTitle.TextXAlignment = Enum.TextXAlignment.Left
 MiscTitle.Parent = MiscTitleBar
@@ -396,7 +400,8 @@ MiscClose.Position = UDim2.new(1, -24, 0.5, -10)
 MiscClose.BackgroundColor3 = THEME.DARK
 MiscClose.TextColor3 = THEME.MAIN
 MiscClose.Text = "X"
-MiscClose.TextScaled = true
+MiscClose.TextScaled = false
+MiscClose.TextSize = 12
 MiscClose.Font = Enum.Font.GothamBold
 MiscClose.BorderSizePixel = 1
 MiscClose.BorderColor3 = THEME.MAIN
@@ -429,7 +434,6 @@ ML:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     MiscScroll.CanvasSize = UDim2.new(0, 0, 0, ML.AbsoluteContentSize.Y + 15)
 end)
 
--- SCROLL FIX + экспорт для XyqwAutoFarm
 MiscScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
     State.lastScrollMisc = tick()
     State.miscScrolling = true
@@ -441,9 +445,7 @@ MiscScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
     end)
 end)
 
--- ============================================================
--- MAKE TOGGLE (для main)
--- ============================================================
+-- MAKE TOGGLE
 local function MakeToggle(name, getState, onToggle)
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1, -4, 0, 28)
@@ -460,7 +462,8 @@ local function MakeToggle(name, getState, onToggle)
     lbl.BackgroundTransparency = 1
     lbl.Text = name
     lbl.TextColor3 = THEME.MAIN
-    lbl.TextScaled = true
+    lbl.TextScaled = false
+    lbl.TextSize = 14
     lbl.Font = Enum.Font.GothamBold
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.Parent = row
@@ -521,16 +524,15 @@ local function MakeToggle(name, getState, onToggle)
     end)
 end
 
--- ============================================================
 -- MAKE MISC BUTTON
--- ============================================================
 local function MakeMiscBtn(name, color, onClick)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1, -4, 0, 34)
     btn.BackgroundColor3 = THEME.DARK
     btn.TextColor3 = color
     btn.Text = name
-    btn.TextScaled = true
+    btn.TextScaled = false
+    btn.TextSize = 14
     btn.Font = Enum.Font.GothamBold
     btn.BorderSizePixel = 2
     btn.BorderColor3 = color
@@ -566,9 +568,7 @@ local function MakeMiscBtn(name, color, onClick)
     end)
 end
 
--- ============================================================
 -- TOGGLES
--- ============================================================
 MakeToggle("ESP Items", function() return State.ESPItems end, function() State.ESPItems = not State.ESPItems end)
 MakeToggle("ESP Monster", function() return State.ESPMonster end, function() State.ESPMonster = not State.ESPMonster end)
 MakeToggle("ESP Players", function() return State.ESPPlayers end, function() State.ESPPlayers = not State.ESPPlayers end)
@@ -576,19 +576,24 @@ MakeToggle("Anti-Trap", function() return State.AntiTrap end, function() State.A
 MakeToggle("Auto-AFK", function() return State.AutoAFK end, function() State.AutoAFK = not State.AutoAFK end)
 
 -- ============================================================
--- КНОПКА ЗАГРУЗКИ AUTOFARM
+-- MODULE BUTTONS
 -- ============================================================
-local AUTOFARM_URL = "https://raw.githubusercontent.com/Xyqwerq/XyqwPiggy/main/XyqwAutoFarm.lua"
+local AUTOFARM_URL = "https://cdn.jsdelivr.net/gh/Xyqwerq/XyqwPiggy@main/XyqwAutoFarm.lua"
+local SKINCHANGER_URL = "https://cdn.jsdelivr.net/gh/Xyqwerq/XyqwSkinChanger-Piggy@main/main.lua"
 
-MakeMiscBtn("Load XyqwAutoFarm", Color3.fromRGB(0, 200, 255), function()
+MakeMiscBtn("Load XyqwAutoFarm", THEME.YELLOW, function()
     Notify("Loading XyqwAutoFarm...", 2)
     print("[XyqwPiggy] Loading XyqwAutoFarm from: " .. AUTOFARM_URL)
     loadScriptFromURL(AUTOFARM_URL, "XyqwAutoFarm")
 end)
 
--- ============================================================
+MakeMiscBtn("Load XyqwSkinChanger", THEME.CYAN, function()
+    Notify("Loading XyqwSkinChanger...", 2)
+    print("[XyqwPiggy] Loading XyqwSkinChanger from: " .. SKINCHANGER_URL)
+    loadScriptFromURL(SKINCHANGER_URL, "XyqwSkinChanger")
+end)
+
 -- DRAG MAIN
--- ============================================================
 local mDrag, mStart, mStartPos = false, nil, nil
 TitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -616,9 +621,7 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- ============================================================
 -- DRAG MISC
--- ============================================================
 local miDrag, miStart, miStartPos = false, nil, nil
 MiscTitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -640,9 +643,7 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- ============================================================
 -- BUTTONS
--- ============================================================
 CloseBtn.MouseButton1Click:Connect(function()
     MainFrame.Visible = false
     MiscFrame.Visible = false
@@ -667,9 +668,7 @@ MiscClose.MouseButton1Click:Connect(function()
     MiscFrame.Visible = false
 end)
 
--- ============================================================
 -- DOCK DRAG
--- ============================================================
 local dockDrag, dockStart, dockStartPos, dockMoved = false, nil, nil, false
 DockBtn.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -710,18 +709,14 @@ end)
 
 print("[XyqwPiggy v" .. VERSION .. "] Part 1 loaded!")
 
--- ============================================================
 -- ESP FOLDER
--- ============================================================
 local ESPFolder = Instance.new("Folder")
 ESPFolder.Name = "XyqwPiggyESP"
 ESPFolder.Parent = CoreGui
 
 local ESP = { Items = {}, Monster = {}, Players = {} }
 
--- ============================================================
 -- GET ITEM NAME
--- ============================================================
 local function GetKeyNameByColor(c)
     local h, s, v = Color3.toHSV(c)
     if s < 0.15 then return "White Key" end
@@ -760,9 +755,7 @@ local function GetItemName(item)
     return "Name Encrypted"
 end
 
--- ============================================================
 -- IS DOOR / IS REAL ITEM
--- ============================================================
 local MENU_NAMES = {
     MenuCameras = true, MainMenuForest = true, MainMenuScreen = true,
     ItemsScreen = true, ItemsFocus = true, ItemsCamera = true,
@@ -962,7 +955,8 @@ function _G.__RefreshItemList()
             nl.BackgroundTransparency = 1
             nl.Text = itemName
             nl.TextColor3 = THEME.MAIN
-            nl.TextScaled = true
+            nl.TextScaled = false
+            nl.TextSize = 13
             nl.Font = Enum.Font.GothamBold
             nl.TextXAlignment = Enum.TextXAlignment.Left
             nl.TextTruncate = Enum.TextTruncate.AtEnd
@@ -1022,9 +1016,7 @@ RunService.RenderStepped:Connect(function(dt)
     end
 end)
 
--- ============================================================
 -- ESP ITEMS
--- ============================================================
 local function EnableItemESP()
     local current = {}
     for _, item in ipairs(GetListItems()) do
@@ -1183,9 +1175,7 @@ task.spawn(function()
     end
 end)
 
--- ============================================================
 -- SEARCH
--- ============================================================
 SearchBar:GetPropertyChangedSignal("Text"):Connect(function()
     local q = (SearchBar.Text or ""):lower()
     for _, row in ipairs(ItemScroll:GetChildren()) do
@@ -1196,9 +1186,7 @@ SearchBar:GetPropertyChangedSignal("Text"):Connect(function()
     end
 end)
 
--- ============================================================
 -- BUTTON HANDLERS
--- ============================================================
 ScanBtn.MouseButton1Click:Connect(function()
     Notify("Scanning...", 2)
     task.wait(0.3)
