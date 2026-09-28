@@ -1,14 +1,14 @@
 -- ============================================================
--- ========== XyqwPiggy v7.0 UNIVERSAL ==========
+-- ========== XyqwPiggy v7.1 UNIVERSAL ==========
 -- ============================================================
 -- Автор: Xyqwerq
--- ✅ SkinChanger через loadstring (кнопка SkinChanger)
+-- ✅ SkinChanger через addButton (loadScriptFromURL)
 -- ✅ AutoFarm Gallery
 -- ✅ Book 1 + Book 2 предметы
 -- ✅ Исправлен скролл Misc
 -- ============================================================
 
-local VERSION = "7.0"
+local VERSION = "7.1"
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
@@ -17,18 +17,14 @@ local StarterGui        = game:GetService("StarterGui")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LP                = Players.LocalPlayer
 
--- ============================================================
 -- CONFIG
--- ============================================================
 local GAME_CONFIGS = {
     [4623386862] = { name = "Piggy Book 1" },
     [5661005779] = { name = "Piggy Book 2" },
 }
 local CURRENT_GAME = GAME_CONFIGS[game.PlaceId] or { name = "Unknown" }
 
--- ============================================================
 -- THEME
--- ============================================================
 local THEME = {
     BG     = Color3.fromRGB(0, 0, 0),
     DARK   = Color3.fromRGB(40, 0, 0),
@@ -68,36 +64,122 @@ local function AddTextStroke(label)
 end
 
 -- ============================================================
+-- ⭐ ADD BUTTON (как в XyqwHub) — загрузка скриптов по URL
+-- ============================================================
+local function loadScriptFromURL(url, name)
+    Notify("Loading " .. (name or "script") .. "...", 2)
+    print("[XyqwPiggy] Loading: " .. url)
+    
+    local ok, err = pcall(function()
+        -- Способ 1: loadstring + HttpGet
+        if loadstring and game.HttpGet then
+            local source = game.HttpGet(url)
+            if source and #source > 0 then
+                local fn = loadstring(source)
+                if fn then
+                    fn()
+                    Notify("✓ " .. (name or "script") .. " loaded!", 2)
+                    return
+                end
+            end
+        end
+        
+        -- Способ 2: request
+        if request then
+            local r = request({Url = url, Method = "GET"})
+            if r and r.Body then
+                local fn = loadstring(r.Body)
+                if fn then
+                    fn()
+                    Notify("✓ " .. (name or "script") .. " loaded!", 2)
+                    return
+                end
+            end
+        end
+        
+        -- Способ 3: http_request
+        if http_request then
+            local r = http_request({Url = url, Method = "GET"})
+            if r and r.Body then
+                local fn = loadstring(r.Body)
+                if fn then
+                    fn()
+                    Notify("✓ " .. (name or "script") .. " loaded!", 2)
+                    return
+                end
+            end
+        end
+        
+        error("All methods failed")
+    end)
+    
+    if not ok then
+        Notify("Failed: " .. tostring(err), 4)
+        print("[XyqwPiggy] Error: " .. tostring(err))
+    end
+end
+
+local function addButton(name, url, parent)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -4, 0, 32)
+    btn.BackgroundColor3 = THEME.DARK
+    btn.TextColor3 = THEME.MAIN
+    btn.Text = name
+    btn.TextScaled = true
+    btn.Font = Enum.Font.GothamBold
+    btn.BorderSizePixel = 2
+    btn.BorderColor3 = THEME.MAIN
+    btn.Parent = parent
+    btn.AutoButtonColor = false
+    local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 6); bc.Parent = btn
+    AddStroke(btn, THEME.MAIN, 2); AddTextStroke(btn)
+    
+    local pressStart, pressPos, moved, tracking = 0, nil, false, false
+    btn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            pressStart = tick(); pressPos = input.Position; moved = false; tracking = true
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if tracking and pressPos and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            if (input.Position - pressPos).Magnitude > 8 then moved = true end
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if not tracking then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            tracking = false
+            local held = tick() - pressStart
+            if not moved and held < 0.4 then
+                local mp = input.Position
+                local cp, cs = btn.AbsolutePosition, btn.AbsoluteSize
+                if mp.X >= cp.X and mp.X <= cp.X + cs.X and mp.Y >= cp.Y and mp.Y <= cp.Y + cs.Y then
+                    loadScriptFromURL(url, name)
+                end
+            end
+        end
+    end)
+    
+    return btn
+end
+
+-- ============================================================
 -- STATE
 -- ============================================================
 local State = {
     ScannedItems = {},
     SpinningModels = {},
     CurrentEquipped = nil,
-    FarmRunning = false,
-    FarmNeedStop = false,
-    FarmCurrentCycle = 0,
-    FarmItemsCollected = 0,
-    FarmLastActivity = tick(),
-    FarmConfig = {
-        MAP = "Gallery",
-        MODE = "Swarm",
-        SKIP_TIMER = true,
-        COLLECT_DELAY = 0.05,
-        RESCAN_DELAY = 0.3,
-        MAX_GAME_TIME = 180,
-        AUTO_LOOP = true,
-        AUTO_PLAY = true,
-        AUTO_SKIP = true,
-        AUTO_COLLECT = true,
-    },
+    ESPItems = false,
+    ESPMonster = false,
+    ESPPlayers = false,
+    AntiTrap = false,
+    AutoAFK = false,
     lastScrollMisc = 0,
     miscScrolling = false,
 }
 
--- ============================================================
 -- CLEANUP
--- ============================================================
 for _, obj in ipairs(CoreGui:GetChildren()) do
     if obj.Name == "XyqwPiggy" or obj.Name == "XyqwPiggyESP" then
         pcall(function() obj:Destroy() end)
@@ -110,9 +192,7 @@ for _, obj in ipairs(playerGui:GetChildren()) do
     end
 end
 
--- ============================================================
 -- BALANCE
--- ============================================================
 local function GetPiggyCoins()
     local pg = LP:FindFirstChild("PlayerGui")
     if pg then
@@ -145,9 +225,7 @@ ScreenGui.DisplayOrder = 999
 pcall(function() ScreenGui.Parent = CoreGui end)
 if not ScreenGui.Parent then ScreenGui.Parent = playerGui end
 
--- ============================================================
--- ⭐ DOCK кнопка "XyqwPiggy" (закруглённая с красной обводкой)
--- ============================================================
+-- DOCK "XyqwPiggy" (закруглённая, красная обводка)
 local DockBtn = Instance.new("TextButton")
 DockBtn.Size = UDim2.new(0, 110, 0, 38)
 DockBtn.Position = UDim2.new(0.03, 0, 0.15, 0)
@@ -163,9 +241,7 @@ DockBtn.ZIndex = 1000
 local DBC = Instance.new("UICorner"); DBC.CornerRadius = UDim.new(0, 12); DBC.Parent = DockBtn
 AddStroke(DockBtn, THEME.MAIN, 2); AddTextStroke(DockBtn)
 
--- ============================================================
 -- MAIN FRAME
--- ============================================================
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0.92, 0, 0.9, 0)
 MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -358,8 +434,8 @@ local ResetBtn = MakeBtn("Reset", 0.75, 0.24)
 -- MISC FRAME
 -- ============================================================
 local MiscFrame = Instance.new("Frame")
-MiscFrame.Size = UDim2.new(0, 230, 0, 300)
-MiscFrame.Position = UDim2.new(0.5, 220, 0.5, -150)
+MiscFrame.Size = UDim2.new(0, 230, 0, 320)
+MiscFrame.Position = UDim2.new(0.5, 220, 0.5, -160)
 MiscFrame.BackgroundColor3 = THEME.BG
 MiscFrame.BorderSizePixel = 3
 MiscFrame.BorderColor3 = THEME.MAIN
@@ -426,7 +502,7 @@ ML:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     MiscScroll.CanvasSize = UDim2.new(0, 0, 0, ML.AbsoluteContentSize.Y + 15)
 end)
 
--- ⭐ ФИКС СКРОЛЛА MISC
+-- ФИКС СКРОЛЛА MISC
 MiscScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
     State.lastScrollMisc = tick()
     State.miscScrolling = true
@@ -488,78 +564,7 @@ local function MakeToggle(name, getState, onToggle)
     catcher.Parent = row
 
     local pressStart, pressPos, moved, tracking = 0, nil, false, false
-
     catcher.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-            pressStart = tick(); pressPos = input.Position; moved = false; tracking = true
-        end
-    end)
-
-    UserInputService.InputChanged:Connect(function(input)
-        if tracking and pressPos and
-        (input.UserInputType == Enum.UserInputType.MouseMovement
-        or input.UserInputType == Enum.UserInputType.Touch) then
-            if (input.Position - pressPos).Magnitude > 8 then moved = true end
-        end
-    end)
-
-    UserInputService.InputEnded:Connect(function(input)
-        if not tracking then return end
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-            tracking = false
-            local held = tick() - pressStart
-            if not moved and held < 0.4 and (tick() - State.lastScrollMisc) > 0.4 and not State.miscScrolling then
-                local mp = input.Position
-                local cp, cs = catcher.AbsolutePosition, catcher.AbsoluteSize
-                if mp.X >= cp.X and mp.X <= cp.X + cs.X
-                and mp.Y >= cp.Y and mp.Y <= cp.Y + cs.Y then
-                    fire()
-                end
-            end
-            pressPos = nil
-        end
-    end)
-end
-
-MakeToggle("ESP Items", function() return State.ESPItems end, function() State.ESPItems = not State.ESPItems end)
-MakeToggle("ESP Monster", function() return State.ESPMonster end, function() State.ESPMonster = not State.ESPMonster end)
-MakeToggle("ESP Players", function() return State.ESPPlayers end, function() State.ESPPlayers = not State.ESPPlayers end)
-MakeToggle("Anti-Trap", function() return State.AntiTrap end, function() State.AntiTrap = not State.AntiTrap end)
-MakeToggle("Auto-AFK", function() return State.AutoAFK end, function() State.AutoAFK = not State.AutoAFK end)
-
--- ============================================================
--- AUTOFARM
--- ============================================================
-local function IsPrivateServer()
-    local gf = workspace:FindFirstChild("GameFolder")
-    if gf then
-        local vipsv = gf:FindFirstChild("IsVIPServer")
-        if vipsv and vipsv:IsA("BoolValue") then
-            return vipsv.Value
-        end
-    end
-    return game.PrivateServerId ~= "" and game.PrivateServerOwnerId ~= 0
-end
-
-local function MakeFarmBtn(name, color, onClick)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, -4, 0, 34)
-    btn.BackgroundColor3 = THEME.DARK
-    btn.TextColor3 = color
-    btn.Text = name
-    btn.TextScaled = true
-    btn.Font = Enum.Font.GothamBold
-    btn.BorderSizePixel = 2
-    btn.BorderColor3 = color
-    btn.Parent = MiscScroll
-    btn.AutoButtonColor = false
-    local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 6); bc.Parent = btn
-    AddStroke(btn, color, 2); AddTextStroke(btn)
-
-    local pressStart, pressPos, moved, tracking = 0, nil, false, false
-    btn.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             pressStart = tick(); pressPos = input.Position; moved = false; tracking = true
         end
@@ -576,492 +581,21 @@ local function MakeFarmBtn(name, color, onClick)
             local held = tick() - pressStart
             if not moved and held < 0.4 and (tick() - State.lastScrollMisc) > 0.4 and not State.miscScrolling then
                 local mp = input.Position
-                local cp, cs = btn.AbsolutePosition, btn.AbsoluteSize
+                local cp, cs = catcher.AbsolutePosition, catcher.AbsoluteSize
                 if mp.X >= cp.X and mp.X <= cp.X + cs.X and mp.Y >= cp.Y and mp.Y <= cp.Y + cs.Y then
-                    onClick()
+                    fire()
                 end
             end
+            pressPos = nil
         end
     end)
 end
 
--- ============================================================
--- AUTO FARM CONFIRM
--- ============================================================
-local function ShowAutoFarmConfirm()
-    for _, obj in ipairs(ScreenGui:GetChildren()) do
-        if obj.Name == "AutoFarmConfirm" then obj:Destroy() end
-    end
-
-    local isPrivate = IsPrivateServer()
-
-    local confirmFrame = Instance.new("Frame")
-    confirmFrame.Name = "AutoFarmConfirm"
-    confirmFrame.Size = UDim2.new(0, 360, 0, 300)
-    confirmFrame.Position = UDim2.new(0.5, -180, 0.5, -150)
-    confirmFrame.BackgroundColor3 = THEME.BG
-    confirmFrame.BorderSizePixel = 3
-    confirmFrame.BorderColor3 = THEME.MAIN
-    confirmFrame.Active = true
-    confirmFrame.ZIndex = 100
-    confirmFrame.Parent = ScreenGui
-    local cfc = Instance.new("UICorner"); cfc.CornerRadius = UDim.new(0, 10); cfc.Parent = confirmFrame
-
-    local titleBar = Instance.new("Frame")
-    titleBar.Size = UDim2.new(1, 0, 0, 32)
-    titleBar.BackgroundColor3 = THEME.TITLE
-    titleBar.BorderSizePixel = 0
-    titleBar.ZIndex = 101
-    titleBar.Parent = confirmFrame
-    local tbc = Instance.new("UICorner"); tbc.CornerRadius = UDim.new(0, 10); tbc.Parent = titleBar
-
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, -10, 1, 0)
-    title.Position = UDim2.new(0, 8, 0, 0)
-    title.BackgroundTransparency = 1
-    title.Text = "XyqwPiggy | READ THIS!!"
-    title.TextColor3 = THEME.MAIN
-    title.TextScaled = true
-    title.Font = Enum.Font.GothamBold
-    title.TextXAlignment = Enum.TextXAlignment.Left
-    title.ZIndex = 102
-    title.Parent = titleBar
-    AddTextStroke(title)
-
-    local warnText = Instance.new("TextLabel")
-    warnText.Size = UDim2.new(1, -20, 0, 60)
-    warnText.Position = UDim2.new(0, 10, 0, 42)
-    warnText.BackgroundTransparency = 1
-    warnText.Text = "AutoFarm works only on PRIVATE servers and on the Gallery map (AutoFarm selects it automatically)"
-    warnText.TextColor3 = Color3.fromRGB(255, 255, 255)
-    warnText.TextScaled = true
-    warnText.Font = Enum.Font.GothamBold
-    warnText.TextWrapped = true
-    warnText.TextXAlignment = Enum.TextXAlignment.Center
-    warnText.ZIndex = 102
-    warnText.Parent = confirmFrame
-    AddTextStroke(warnText)
-
-    local serverStatus = Instance.new("TextLabel")
-    serverStatus.Size = UDim2.new(1, -20, 0, 50)
-    serverStatus.Position = UDim2.new(0, 10, 0, 110)
-    serverStatus.BackgroundTransparency = 1
-    if isPrivate then
-        serverStatus.Text = "You are currently on a PRIVATE server."
-        serverStatus.TextColor3 = Color3.fromRGB(0, 255, 100)
-    else
-        serverStatus.Text = "You are currently on a PUBLIC server, AutoFarm may not work!"
-        serverStatus.TextColor3 = Color3.fromRGB(255, 0, 0)
-    end
-    serverStatus.TextScaled = true
-    serverStatus.Font = Enum.Font.GothamBold
-    serverStatus.TextWrapped = true
-    serverStatus.TextXAlignment = Enum.TextXAlignment.Center
-    serverStatus.ZIndex = 102
-    serverStatus.Parent = confirmFrame
-    AddTextStroke(serverStatus)
-
-    local cancelBtn = Instance.new("TextButton")
-    cancelBtn.Size = UDim2.new(0.45, -10, 0, 48)
-    cancelBtn.Position = UDim2.new(0, 10, 1, -58)
-    cancelBtn.BackgroundColor3 = THEME.DARK
-    cancelBtn.TextColor3 = THEME.MAIN
-    cancelBtn.Text = "Cancel"
-    cancelBtn.TextScaled = true
-    cancelBtn.Font = Enum.Font.GothamBold
-    cancelBtn.BorderSizePixel = 2
-    cancelBtn.BorderColor3 = THEME.MAIN
-    cancelBtn.ZIndex = 102
-    cancelBtn.Parent = confirmFrame
-    cancelBtn.AutoButtonColor = false
-    local cbc = Instance.new("UICorner"); cbc.CornerRadius = UDim.new(0, 6); cbc.Parent = cancelBtn
-    AddStroke(cancelBtn, THEME.MAIN, 2); AddTextStroke(cancelBtn)
-
-    local runBtn = Instance.new("TextButton")
-    runBtn.Size = UDim2.new(0.45, -10, 0, 48)
-    runBtn.Position = UDim2.new(0.5, 0, 1, -58)
-    runBtn.BackgroundColor3 = THEME.DARK
-    runBtn.TextColor3 = THEME.SUB
-    runBtn.Text = "Run AutoFarm (5)"
-    runBtn.TextScaled = true
-    runBtn.Font = Enum.Font.GothamBold
-    runBtn.BorderSizePixel = 2
-    runBtn.BorderColor3 = THEME.SUB
-    runBtn.ZIndex = 102
-    runBtn.Parent = confirmFrame
-    runBtn.AutoButtonColor = false
-    local rbc = Instance.new("UICorner"); rbc.CornerRadius = UDim.new(0, 6); rbc.Parent = runBtn
-    AddStroke(runBtn, THEME.SUB, 2); AddTextStroke(runBtn)
-
-    local canRun = false
-
-    task.spawn(function()
-        for i = 5, 1, -1 do
-            runBtn.Text = "Run AutoFarm (" .. i .. ")"
-            task.wait(1)
-            if not confirmFrame.Parent then return end
-        end
-        canRun = true
-        runBtn.Text = "Run AutoFarm"
-        runBtn.TextColor3 = THEME.OK
-        runBtn.BorderColor3 = THEME.OK
-        AddStroke(runBtn, THEME.OK, 2)
-    end)
-
-    cancelBtn.MouseButton1Click:Connect(function()
-        confirmFrame:Destroy()
-        Notify("AutoFarm cancelled", 2)
-    end)
-
-    runBtn.MouseButton1Click:Connect(function()
-        if not canRun then
-            Notify("Please wait!", 2)
-            return
-        end
-        confirmFrame:Destroy()
-        State.FarmNeedStop = false
-        State.FarmCurrentCycle = 0
-        State.FarmItemsCollected = 0
-        if _G.__FarmMainLoop then
-            task.spawn(_G.__FarmMainLoop)
-        end
-    end)
-end
-
--- ============================================================
--- AUTOFARM LOGIC
--- ============================================================
-local FarmRemotes = { JoinGame = nil, VIPCommandEvent = nil }
-
-local function GetFarmRemote(name)
-    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-    if remotes then
-        local r = remotes:FindFirstChild(name)
-        if r then return r end
-    end
-    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
-        if obj.Name == name and (obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction")) then
-            return obj
-        end
-    end
-    return nil
-end
-
-local function RefreshFarmRemotes()
-    FarmRemotes.JoinGame = GetFarmRemote("JoinGame")
-    FarmRemotes.VIPCommandEvent = GetFarmRemote("VIPCommandEvent")
-end
-
-local function GetGamePhase()
-    local gf = workspace:FindFirstChild("GameFolder")
-    if not gf then return nil end
-    local phase = gf:FindFirstChild("Phase")
-    return phase and phase.Value or nil
-end
-
-local function SafeFireRemote(obj, ...)
-    if not obj then return false end
-    return pcall(function()
-        if obj:IsA("RemoteEvent") then obj:FireServer(...)
-        elseif obj:IsA("RemoteFunction") then obj:InvokeServer(...) end
-    end)
-end
-
-local function SafeClickBtn(btn)
-    if not btn then return false end
-    if firesignal then
-        local ok = pcall(function() firesignal(btn.MouseButton1Click) end)
-        if ok then return true end
-    end
-    return pcall(function()
-        if getconnections then
-            for _, conn in pairs(getconnections(btn.MouseButton1Click)) do
-                pcall(function() conn:Fire() end)
-            end
-        end
-    end)
-end
-
-local function FarmPressPlay()
-    if FarmRemotes.JoinGame then
-        if SafeFireRemote(FarmRemotes.JoinGame, true) then
-            task.wait(0.4)
-            return true
-        end
-    end
-    local pg = LP:FindFirstChild("PlayerGui")
-    if pg then
-        local mm = pg:FindFirstChild("MainMenu")
-        if mm then
-            local ms = mm:FindFirstChild("MainScreen")
-            if ms then
-                local cf = ms:FindFirstChild("CenterFrame")
-                if cf then
-                    local cb = cf:FindFirstChild("CenterButtons")
-                    if cb then
-                        local playBtn = cb:FindFirstChild("Play")
-                        if playBtn then
-                            SafeClickBtn(playBtn)
-                            return true
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return false
-end
-
-local function FarmPressSkip()
-    local pg = LP:FindFirstChild("PlayerGui")
-    if not pg then return false end
-    local mm = pg:FindFirstChild("MainMenu")
-    if not mm then return false end
-    local skipBtn = mm:FindFirstChild("Skip")
-    if skipBtn then
-        SafeClickBtn(skipBtn)
-        return true
-    end
-    return false
-end
-
-local function FarmSetupGallery()
-    if not FarmRemotes.VIPCommandEvent then RefreshFarmRemotes() end
-    if not FarmRemotes.VIPCommandEvent then return false end
-    SafeFireRemote(FarmRemotes.VIPCommandEvent, "SetMap", State.FarmConfig.MAP)
-    task.wait(0.3)
-    SafeFireRemote(FarmRemotes.VIPCommandEvent, "SetMode", State.FarmConfig.MODE)
-    task.wait(0.3)
-    if State.FarmConfig.SKIP_TIMER then
-        SafeFireRemote(FarmRemotes.VIPCommandEvent, "SkipTimer", true)
-        task.wait(0.2)
-        SafeFireRemote(FarmRemotes.VIPCommandEvent, "SkipTimer", true)
-    end
-    return true
-end
-
-local function FarmCollectOnce()
-    local collected = 0
-    local char = LP.Character
-    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return 0 end
-    local itemFolder = workspace:FindFirstChild("ItemFolder")
-    if not itemFolder then return 0 end
-    for _, item in ipairs(itemFolder:GetChildren()) do
-        if State.FarmNeedStop then break end
-        if item:IsA("BasePart") then
-            local cd = item:FindFirstChildOfClass("ClickDetector")
-            if cd then
-                pcall(function() hrp.CFrame = CFrame.new(item.Position + Vector3.new(0, 2, 0)) end)
-                task.wait(State.FarmConfig.COLLECT_DELAY)
-                pcall(function()
-                    if fireclickdetector then fireclickdetector(cd) end
-                end)
-                collected = collected + 1
-                State.FarmItemsCollected = State.FarmItemsCollected + 1
-                State.FarmLastActivity = tick()
-            end
-        end
-    end
-    return collected
-end
-
-local function FarmCollectLoop()
-    local startTime = tick()
-    while not State.FarmNeedStop do
-        local phase = GetGamePhase()
-        if phase ~= "GameInProgress" then break end
-        if tick() - startTime > State.FarmConfig.MAX_GAME_TIME then break end
-        FarmCollectOnce()
-        task.wait(State.FarmConfig.RESCAN_DELAY)
-    end
-end
-
-local function FarmMainLoop()
-    State.FarmRunning = true
-    Notify("AutoFarm started!", 3)
-    RefreshFarmRemotes()
-
-    while State.FarmConfig.AUTO_LOOP and not State.FarmNeedStop do
-        State.FarmCurrentCycle = State.FarmCurrentCycle + 1
-        State.FarmItemsCollected = 0
-        State.FarmLastActivity = tick()
-
-        local phase = GetGamePhase()
-        if not phase or phase == "GameInProgress" then
-            local t = tick()
-            while tick() - t < 200 do
-                if State.FarmNeedStop then break end
-                if GetGamePhase() == "Intermission" then break end
-                task.wait(0.5)
-            end
-        end
-
-        if State.FarmNeedStop then break end
-
-        if State.FarmConfig.AUTO_PLAY then
-            local p = GetGamePhase()
-            if p == nil or p == "Intermission" then
-                FarmPressPlay()
-                task.wait(1)
-            end
-        end
-
-        FarmSetupGallery()
-        task.wait(1)
-
-        local t2 = tick()
-        while tick() - t2 < 90 do
-            if State.FarmNeedStop then break end
-            local p = GetGamePhase()
-            if p == "GameInProgress" then break end
-            if p == "Map Voting" or p == "Piggy Voting" then
-                if not _G.__lastSkipVote or tick() - _G.__lastSkipVote > 5 then
-                    _G.__lastSkipVote = tick()
-                    SafeFireRemote(FarmRemotes.VIPCommandEvent, "SkipTimer", true)
-                end
-            end
-            task.wait(0.5)
-        end
-
-        if State.FarmNeedStop then break end
-
-        if GetGamePhase() == "GameInProgress" then
-            task.wait(2)
-            if State.FarmConfig.AUTO_COLLECT then
-                FarmCollectLoop()
-            end
-            if State.FarmConfig.AUTO_SKIP and not State.FarmNeedStop then
-                task.wait(2)
-                FarmPressSkip()
-                task.wait(3)
-                FarmPressSkip()
-            end
-        end
-
-        task.wait(3)
-    end
-
-    State.FarmRunning = false
-    Notify("AutoFarm stopped", 3)
-end
-
-_G.__FarmMainLoop = FarmMainLoop
-
-MakeFarmBtn("🤖 Run AutoFarm", Color3.fromRGB(0, 200, 255), function()
-    ShowAutoFarmConfirm()
-end)
-
-MakeFarmBtn("⏹ Stop AutoFarm", Color3.fromRGB(255, 0, 0), function()
-    State.FarmNeedStop = true
-    State.FarmRunning = false
-    Notify("AutoFarm stopped", 2)
-end)
-
--- ============================================================
--- ⭐ SkinChanger — LOADSTRING с GitHub
--- ============================================================
-SkinBtn.MouseButton1Click:Connect(function()
-    -- Скрываем XyqwPiggy
-    MainFrame.Visible = false
-    MiscFrame.Visible = false
-    DockBtn.Visible = true
-    
-    Notify("Loading SkinChanger...", 3)
-    
-    local ok, err = pcall(function()
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/Xyqwerq/XyqwSkinChanger-Piggy/main/main.lua"))()
-    end)
-    
-    if not ok then
-        Notify("SkinChanger failed: " .. tostring(err), 4)
-    else
-        Notify("SkinChanger loaded!", 2)
-    end
-end)
-
--- ============================================================
--- DRAG MAIN
--- ============================================================
-local mDrag, mStart, mStartPos = false, nil, nil
-TitleBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        local mp = input.Position
-        local function over(b)
-            local p, s = b.AbsolutePosition, b.AbsoluteSize
-            return mp.X >= p.X and mp.X <= p.X + s.X and mp.Y >= p.Y and mp.Y <= p.Y + s.Y
-        end
-        if over(CloseBtn) or over(MiscBtn) or over(SkinBtn) then return end
-        mDrag = true; mStart = input.Position; mStartPos = MainFrame.Position
-    end
-end)
-TitleBar.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        mDrag = false
-    end
-end)
-UserInputService.InputChanged:Connect(function(input)
-    if mDrag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local d = input.Position - mStart
-        MainFrame.Position = UDim2.new(mStartPos.X.Scale, mStartPos.X.Offset + d.X, mStartPos.Y.Scale, mStartPos.Y.Offset + d.Y)
-    end
-end)
-
-CloseBtn.MouseButton1Click:Connect(function()
-    MainFrame.Visible = false
-    MiscFrame.Visible = false
-    DockBtn.Visible = true
-end)
-
-MiscBtn.MouseButton1Click:Connect(function()
-    MiscFrame.Visible = not MiscFrame.Visible
-end)
-MiscClose.MouseButton1Click:Connect(function()
-    MiscFrame.Visible = false
-end)
-
--- DOCK drag
-local dockDrag, dockStart, dockStartPos, dockMoved = false, nil, nil, false
-DockBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dockDrag = true; dockMoved = false
-        dockStart = input.Position; dockStartPos = DockBtn.Position
-    end
-end)
-UserInputService.InputChanged:Connect(function(input)
-    if dockDrag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local d = input.Position - dockStart
-        if math.abs(d.X) > 5 or math.abs(d.Y) > 5 then dockMoved = true end
-        if dockMoved then
-            DockBtn.Position = UDim2.new(dockStartPos.X.Scale, dockStartPos.X.Offset + d.X, dockStartPos.Y.Scale, dockStartPos.Y.Offset + d.Y)
-        end
-    end
-end)
-UserInputService.InputEnded:Connect(function(input)
-    if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and dockDrag then
-        if not dockMoved then
-            MainFrame.Visible = true
-            DockBtn.Visible = false
-        end
-        dockDrag = false
-    end
-end)
-
--- AUTO-REFRESH BALANCE
-task.spawn(function()
-    while true do
-        task.wait(3)
-        if MainFrame.Parent then
-            BalanceLabel.Text = "Piggy Coins: " .. GetPiggyCoins()
-        end
-    end
-end)
-
-print("[XyqwPiggy v" .. VERSION .. "] Loaded!")
-print("[XyqwPiggy v" .. VERSION .. "] Game: " .. CURRENT_GAME.name)
-print("[XyqwPiggy v" .. VERSION .. "] SkinChanger через loadstring")
-print("[XyqwPiggy v" .. VERSION .. "] AutoFarm в Misc")
-Notify("XyqwPiggy v" .. VERSION .. " loaded!", 3)
+MakeToggle("ESP Items", function() return State.ESPItems end, function() State.ESPItems = not State.ESPItems end)
+MakeToggle("ESP Monster", function() return State.ESPMonster end, function() State.ESPMonster = not State.ESPMonster end)
+MakeToggle("ESP Players", function() return State.ESPPlayers end, function() State.ESPPlayers = not State.ESPPlayers end)
+MakeToggle("Anti-Trap", function() return State.AntiTrap end, function() State.AntiTrap = not State.AntiTrap end)
+MakeToggle("Auto-AFK", function() return State.AutoAFK end, function() State.AutoAFK = not State.AutoAFK end)
 -- ============================================================
 -- ESP FOLDER
 -- ============================================================
@@ -1587,20 +1121,16 @@ OpenGameBtn.MouseButton1Click:Connect(function()
     local mainMenu = LP.PlayerGui:FindFirstChild("MainMenu")
     if mainMenu then
         local skf = mainMenu:FindFirstChild("SkinsFrame")
-        if skf then skf.Visible = true Notify("Меню открыто", 2) end
+        if skf then skf.Visible = true Notify("Menu opened", 2) end
     end
 end)
 
 RefreshBalBtn.MouseButton1Click:Connect(function()
     BalanceLabel.Text = "Piggy Coins: " .. GetPiggyCoins()
-    Notify("Баланс обновлён", 1)
+    Notify("Balance refreshed", 1)
 end)
 
 ResetBtn.MouseButton1Click:Connect(function()
-    if _G.__FarmNeedStop then
-        State.FarmNeedStop = true
-        State.FarmRunning = false
-    end
     Notify("Reset", 2)
 end)
 
@@ -1633,12 +1163,9 @@ task.spawn(function()
     end
 end)
 
--- ============================================================
--- LOAD
--- ============================================================
 print("[XyqwPiggy v" .. VERSION .. "] Part 2 loaded!")
 -- ============================================================
--- AUTOFARM REMOTES
+-- AUTOFARM: REMOTES
 -- ============================================================
 local FarmRemotes = { JoinGame = nil, VIPCommandEvent = nil }
 
@@ -1858,7 +1385,7 @@ end
 _G.__FarmMainLoop = FarmMainLoop
 
 -- ============================================================
--- AUTOFARM CONFIRM WINDOW
+-- AUTO FARM CONFIRM WINDOW
 -- ============================================================
 local function IsPrivateServer()
     local gf = workspace:FindFirstChild("GameFolder")
@@ -2010,9 +1537,9 @@ local function ShowAutoFarmConfirm()
 end
 
 -- ============================================================
--- MISC BUTTONS: AutoFarm
+-- MISC BUTTONS: AutoFarm + SkinChanger
 -- ============================================================
-local function MakeFarmBtn(name, color, onClick)
+local function MakeMiscBtn(name, color, onClick)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1, -4, 0, 34)
     btn.BackgroundColor3 = THEME.DARK
@@ -2054,43 +1581,112 @@ local function MakeFarmBtn(name, color, onClick)
     end)
 end
 
-MakeFarmBtn("🤖 Run AutoFarm", Color3.fromRGB(0, 200, 255), function()
+MakeMiscBtn("🤖 Run AutoFarm", Color3.fromRGB(0, 200, 255), function()
     ShowAutoFarmConfirm()
 end)
 
-MakeFarmBtn("⏹ Stop AutoFarm", Color3.fromRGB(255, 0, 0), function()
+MakeMiscBtn("⏹ Stop AutoFarm", Color3.fromRGB(255, 0, 0), function()
     State.FarmNeedStop = true
     State.FarmRunning = false
     Notify("AutoFarm stopped", 2)
 end)
 
 -- ============================================================
--- SKINCHANGER через loadstring
+-- ⭐ SKINCHANGER через addButton (как в XyqwHub)
 -- ============================================================
+local SKINCHANGER_URL = "https://raw.githubusercontent.com/Xyqwerq/XyqwSkinChanger-Piggy/main/main.lua"
+
 SkinBtn.MouseButton1Click:Connect(function()
     MainFrame.Visible = false
     MiscFrame.Visible = false
     DockBtn.Visible = true
+    
+    loadScriptFromURL(SKINCHANGER_URL, "SkinChanger")
+end)
 
-    Notify("Loading SkinChanger...", 3)
+-- ============================================================
+-- DRAG MAIN
+-- ============================================================
+local mDrag, mStart, mStartPos = false, nil, nil
+TitleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        local mp = input.Position
+        local function over(b)
+            local p, s = b.AbsolutePosition, b.AbsoluteSize
+            return mp.X >= p.X and mp.X <= p.X + s.X and mp.Y >= p.Y and mp.Y <= p.Y + s.Y
+        end
+        if over(CloseBtn) or over(MiscBtn) or over(SkinBtn) then return end
+        mDrag = true; mStart = input.Position; mStartPos = MainFrame.Position
+    end
+end)
+TitleBar.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        mDrag = false
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if mDrag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local d = input.Position - mStart
+        MainFrame.Position = UDim2.new(mStartPos.X.Scale, mStartPos.X.Offset + d.X, mStartPos.Y.Scale, mStartPos.Y.Offset + d.Y)
+    end
+end)
 
-    local ok, err = pcall(function()
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/Xyqwerq/XyqwSkinChanger-Piggy/main/main.lua"))()
-    end)
+CloseBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+    MiscFrame.Visible = false
+    DockBtn.Visible = true
+end)
 
-    if not ok then
-        Notify("SkinChanger failed: " .. tostring(err), 4)
-    else
-        Notify("SkinChanger loaded!", 2)
+MiscBtn.MouseButton1Click:Connect(function()
+    MiscFrame.Visible = not MiscFrame.Visible
+end)
+MiscClose.MouseButton1Click:Connect(function()
+    MiscFrame.Visible = false
+end)
+
+-- DOCK drag
+local dockDrag, dockStart, dockStartPos, dockMoved = false, nil, nil, false
+DockBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dockDrag = true; dockMoved = false
+        dockStart = input.Position; dockStartPos = DockBtn.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dockDrag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local d = input.Position - dockStart
+        if math.abs(d.X) > 5 or math.abs(d.Y) > 5 then dockMoved = true end
+        if dockMoved then
+            DockBtn.Position = UDim2.new(dockStartPos.X.Scale, dockStartPos.X.Offset + d.X, dockStartPos.Y.Scale, dockStartPos.Y.Offset + d.Y)
+        end
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and dockDrag then
+        if not dockMoved then
+            MainFrame.Visible = true
+            DockBtn.Visible = false
+        end
+        dockDrag = false
+    end
+end)
+
+-- AUTO-REFRESH BALANCE
+task.spawn(function()
+    while true do
+        task.wait(3)
+        if MainFrame.Parent then
+            BalanceLabel.Text = "Piggy Coins: " .. GetPiggyCoins()
+        end
     end
 end)
 
 -- ============================================================
--- FINAL LOAD
+-- LOAD
 -- ============================================================
 print("[XyqwPiggy v" .. VERSION .. "] Loaded!")
 print("[XyqwPiggy v" .. VERSION .. "] Game: " .. CURRENT_GAME.name)
-print("[XyqwPiggy v" .. VERSION .. "] SkinChanger через loadstring")
+print("[XyqwPiggy v" .. VERSION .. "] SkinChanger через addButton (loadScriptFromURL)")
 print("[XyqwPiggy v" .. VERSION .. "] AutoFarm в Misc")
 print("[XyqwPiggy v" .. VERSION .. "] By Xyqwerq")
 
