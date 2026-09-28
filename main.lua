@@ -1,20 +1,13 @@
 print("[XyqwPiggy] Loading...")
+
+local _ok, _err = pcall(function()
+
 -- ============================================================
--- ========== XyqwPiggy v7.2 SUPER FIX ==========
--- ============================================================
--- Автор: Xyqwerq
--- ✅ FIX: SkinChanger (game:HttpGet)
--- ✅ FIX: AutoFarm (ItemFolder → GetListItems + fallback)
--- ✅ FIX: Play/Skip (рекурсивный поиск кнопок)
--- ✅ FIX: MiscFrame позиция
--- ✅ FIX: ESP Items обновление
--- ✅ FIX: Auto-AFK (VirtualUser)
--- ✅ FIX: Anti-Trap raycast
--- ✅ FIX: утечка spinningModels
--- ✅ NEW: уведомления AutoFarm + SkinChanger
+-- XyqwPiggy v7.2.1 PURE ASCII
+-- Author: Xyqwerq
 -- ============================================================
 
-local VERSION = "7.2"
+local VERSION = "7.2.1"
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
@@ -23,14 +16,12 @@ local StarterGui        = game:GetService("StarterGui")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LP                = Players.LocalPlayer
 
--- CONFIG
 local GAME_CONFIGS = {
     [4623386862] = { name = "Piggy Book 1" },
     [5661005779] = { name = "Piggy Book 2" },
 }
 local CURRENT_GAME = GAME_CONFIGS[game.PlaceId] or { name = "Unknown" }
 
--- THEME
 local THEME = {
     BG     = Color3.fromRGB(0, 0, 0),
     DARK   = Color3.fromRGB(40, 0, 0),
@@ -70,48 +61,43 @@ local function AddTextStroke(label)
 end
 
 -- ============================================================
--- LOAD SCRIPT FROM URL (FIXED)
+-- LOAD SCRIPT FROM URL
 -- ============================================================
 local function loadScriptFromURL(url, name)
     Notify("Loading " .. (name or "script") .. "...", 2)
     print("[XyqwPiggy] Loading: " .. url)
 
     local ok, err = pcall(function()
-        -- Метод 1: game:HttpGet (двоеточие!)
         if loadstring then
             local s_ok, source = pcall(function() return game:HttpGet(url) end)
             if s_ok and source and #source > 0 then
                 local fn = loadstring(source)
                 if fn then
                     fn()
-                    Notify("✓ " .. (name or "script") .. " loaded!", 3)
+                    Notify("OK " .. (name or "script") .. " loaded!", 3)
                     print("[XyqwPiggy] " .. (name or "script") .. " loaded via game:HttpGet")
                     return
                 end
             end
         end
-        -- Метод 2: request
         if request then
             local r = request({Url = url, Method = "GET"})
             if r and r.Body then
                 local fn = loadstring(r.Body)
                 if fn then
                     fn()
-                    Notify("✓ " .. (name or "script") .. " loaded!", 3)
-                    print("[XyqwPiggy] " .. (name or "script") .. " loaded via request")
+                    Notify("OK " .. (name or "script") .. " loaded!", 3)
                     return
                 end
             end
         end
-        -- Метод 3: http_request
         if http_request then
             local r = http_request({Url = url, Method = "GET"})
             if r and r.Body then
                 local fn = loadstring(r.Body)
                 if fn then
                     fn()
-                    Notify("✓ " .. (name or "script") .. " loaded!", 3)
-                    print("[XyqwPiggy] " .. (name or "script") .. " loaded via http_request")
+                    Notify("OK " .. (name or "script") .. " loaded!", 3)
                     return
                 end
             end
@@ -155,7 +141,6 @@ local State = {
     },
 }
 
--- CLEANUP
 for _, obj in ipairs(CoreGui:GetChildren()) do
     if obj.Name == "XyqwPiggy" or obj.Name == "XyqwPiggyESP" then
         pcall(function() obj:Destroy() end)
@@ -168,7 +153,6 @@ for _, obj in ipairs(playerGui:GetChildren()) do
     end
 end
 
--- BALANCE
 local function GetPiggyCoins()
     local pg = LP:FindFirstChild("PlayerGui")
     if pg then
@@ -201,7 +185,6 @@ ScreenGui.DisplayOrder = 999
 pcall(function() ScreenGui.Parent = CoreGui end)
 if not ScreenGui.Parent then ScreenGui.Parent = playerGui end
 
--- DOCK
 local DockBtn = Instance.new("TextButton")
 DockBtn.Size = UDim2.new(0, 110, 0, 38)
 DockBtn.Position = UDim2.new(0.03, 0, 0.15, 0)
@@ -217,7 +200,6 @@ DockBtn.ZIndex = 1000
 local DBC = Instance.new("UICorner"); DBC.CornerRadius = UDim.new(0, 12); DBC.Parent = DockBtn
 AddStroke(DockBtn, THEME.MAIN, 2); AddTextStroke(DockBtn)
 
--- MAIN FRAME
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0.92, 0, 0.9, 0)
 MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -230,7 +212,6 @@ MainFrame.Visible = false
 MainFrame.Parent = ScreenGui
 local MC = Instance.new("UICorner"); MC.CornerRadius = UDim.new(0, 10); MC.Parent = MainFrame
 
--- TITLE BAR
 local TitleBar = Instance.new("Frame")
 TitleBar.Size = UDim2.new(1, 0, 0, 28)
 TitleBar.BackgroundColor3 = THEME.TITLE
@@ -250,7 +231,6 @@ TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = TitleBar
 AddTextStroke(TitleLabel)
 
--- SkinChanger кнопка
 local SkinBtn = Instance.new("TextButton")
 SkinBtn.Size = UDim2.new(0, 80, 0, 22)
 SkinBtn.Position = UDim2.new(1, -146, 0.5, -11)
@@ -266,7 +246,6 @@ SkinBtn.AutoButtonColor = false
 local SKB = Instance.new("UICorner"); SKB.CornerRadius = UDim.new(0, 5); SKB.Parent = SkinBtn
 AddStroke(SkinBtn); AddTextStroke(SkinBtn)
 
--- Misc кнопка
 local MiscBtn = Instance.new("TextButton")
 MiscBtn.Size = UDim2.new(0, 38, 0, 22)
 MiscBtn.Position = UDim2.new(1, -62, 0.5, -11)
@@ -282,7 +261,6 @@ MiscBtn.AutoButtonColor = false
 local MBC = Instance.new("UICorner"); MBC.CornerRadius = UDim.new(0, 5); MBC.Parent = MiscBtn
 AddStroke(MiscBtn); AddTextStroke(MiscBtn)
 
--- Close
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 22, 0, 22)
 CloseBtn.Position = UDim2.new(1, -24, 0.5, -11)
@@ -298,7 +276,6 @@ CloseBtn.AutoButtonColor = false
 local CB = Instance.new("UICorner"); CB.CornerRadius = UDim.new(0, 5); CB.Parent = CloseBtn
 AddStroke(CloseBtn); AddTextStroke(CloseBtn)
 
--- BALANCE
 local BalanceFrame = Instance.new("Frame")
 BalanceFrame.Size = UDim2.new(1, -16, 0, 28)
 BalanceFrame.Position = UDim2.new(0, 8, 0, 32)
@@ -321,7 +298,6 @@ BalanceLabel.TextXAlignment = Enum.TextXAlignment.Left
 BalanceLabel.Parent = BalanceFrame
 AddTextStroke(BalanceLabel)
 
--- SEARCH
 local SearchBar = Instance.new("TextBox")
 SearchBar.Size = UDim2.new(1, -16, 0, 24)
 SearchBar.Position = UDim2.new(0, 8, 0, 66)
@@ -339,7 +315,6 @@ SearchBar.Parent = MainFrame
 local SC = Instance.new("UICorner"); SC.CornerRadius = UDim.new(0, 6); SC.Parent = SearchBar
 AddStroke(SearchBar); AddTextStroke(SearchBar)
 
--- ITEM SCROLL
 local ItemScroll = Instance.new("ScrollingFrame")
 ItemScroll.Size = UDim2.new(1, -16, 1, -180)
 ItemScroll.Position = UDim2.new(0, 8, 0, 96)
@@ -361,7 +336,6 @@ ItemLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     ItemScroll.CanvasSize = UDim2.new(0, 0, 0, ItemLayout.AbsoluteContentSize.Y + 10)
 end)
 
--- INFO
 local InfoLabel = Instance.new("TextLabel")
 InfoLabel.Size = UDim2.new(1, -16, 0, 22)
 InfoLabel.Position = UDim2.new(0, 8, 1, -46)
@@ -376,7 +350,6 @@ InfoLabel.Parent = MainFrame
 local IC = Instance.new("UICorner"); IC.CornerRadius = UDim.new(0, 5); IC.Parent = InfoLabel
 AddStroke(InfoLabel); AddTextStroke(InfoLabel)
 
--- BOTTOM BUTTONS
 local BtnFrame = Instance.new("Frame")
 BtnFrame.Size = UDim2.new(1, -16, 0, 38)
 BtnFrame.Position = UDim2.new(0, 8, 1, -46)
@@ -406,7 +379,6 @@ local OpenGameBtn = MakeBtn("Menu", 0.25, 0.24)
 local RefreshBalBtn = MakeBtn("Balance", 0.50, 0.24)
 local ResetBtn = MakeBtn("Reset", 0.75, 0.24)
 
--- MISC FRAME
 local MiscFrame = Instance.new("Frame")
 MiscFrame.Size = UDim2.new(0, 230, 0, 320)
 MiscFrame.Position = UDim2.new(0.5, 220, 0.5, -160)
@@ -476,7 +448,6 @@ ML:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     MiscScroll.CanvasSize = UDim2.new(0, 0, 0, ML.AbsoluteContentSize.Y + 15)
 end)
 
--- ФИКС СКРОЛЛА MISC
 MiscScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
     State.lastScrollMisc = tick()
     State.miscScrolling = true
@@ -485,7 +456,6 @@ MiscScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
     end)
 end)
 
--- TOGGLE BUILDER
 local function MakeToggle(name, getState, onToggle)
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1, -4, 0, 28)
@@ -569,7 +539,6 @@ MakeToggle("ESP Players", function() return State.ESPPlayers end, function() Sta
 MakeToggle("Anti-Trap", function() return State.AntiTrap end, function() State.AntiTrap = not State.AntiTrap end)
 MakeToggle("Auto-AFK", function() return State.AutoAFK end, function() State.AutoAFK = not State.AutoAFK end)
 
--- DRAG MAIN
 local mDrag, mStart, mStartPos = false, nil, nil
 TitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -594,7 +563,6 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- MISC DRAG
 local miDrag, miStart, miStartPos = false, nil, nil
 MiscTitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -616,14 +584,12 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- BUTTONS
 CloseBtn.MouseButton1Click:Connect(function()
     MainFrame.Visible = false
     MiscFrame.Visible = false
     DockBtn.Visible = true
 end)
 
--- FIX: MiscFrame позиционируется относительно MainFrame
 MiscBtn.MouseButton1Click:Connect(function()
     if MiscFrame.Visible then
         MiscFrame.Visible = false
@@ -641,7 +607,6 @@ MiscClose.MouseButton1Click:Connect(function()
     MiscFrame.Visible = false
 end)
 
--- DOCK DRAG
 local dockDrag, dockStart, dockStartPos, dockMoved = false, nil, nil, false
 DockBtn.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -668,7 +633,6 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- AUTO-REFRESH BALANCE
 task.spawn(function()
     while true do
         task.wait(3)
@@ -827,9 +791,6 @@ local function GetListItems()
     return items
 end
 
--- ============================================================
--- 3D VIEW
--- ============================================================
 local spinningModels = {}
 local currentItems = {}
 local scanInProgress = false
@@ -879,9 +840,6 @@ local function Create3DView(part, vpf)
     end)
 end
 
--- ============================================================
--- TAKE ITEM
--- ============================================================
 local function TakeItem(item)
     local char = LP.Character
     if not char then return end
@@ -904,9 +862,6 @@ local function TakeItem(item)
     end)
 end
 
--- ============================================================
--- REFRESH LIST (FIX: cleanup spinningModels)
--- ============================================================
 function _G.__RefreshItemList()
     if scanInProgress then return end
     scanInProgress = true
@@ -924,7 +879,6 @@ function _G.__RefreshItemList()
 
     for key, row in pairs(existingRows) do
         if not newKeys[key] then
-            -- FIX: чистим spinningModels у которых Parent == nil
             for i = #spinningModels, 1, -1 do
                 local m = spinningModels[i]
                 if not m or not m.Parent then
@@ -1027,7 +981,6 @@ function _G.__RefreshItemList()
     scanInProgress = false
 end
 
--- Вращение 3D
 RunService.RenderStepped:Connect(function(dt)
     for _, model in ipairs(spinningModels) do
         if model and model.Parent then
@@ -1038,9 +991,6 @@ RunService.RenderStepped:Connect(function(dt)
     end
 end)
 
--- ============================================================
--- ESP ITEMS (FIX: обновление)
--- ============================================================
 local function EnableItemESP()
     local current = {}
     for _, item in ipairs(GetListItems()) do
@@ -1070,7 +1020,6 @@ local function DisableItemESP()
     ESP.Items = {}
 end
 
--- Цикл обновления ESP Items
 task.spawn(function()
     while true do
         if State.ESPItems then
@@ -1082,7 +1031,6 @@ task.spawn(function()
     end
 end)
 
--- ESP MONSTER
 local function EnableMonsterESP()
     task.spawn(function()
         while State.ESPMonster do
@@ -1131,7 +1079,6 @@ local function DisableMonsterESP()
     ESP.Monster = {}
 end
 
--- ESP PLAYERS
 local function EnablePlayerESP()
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LP and plr.Character then
@@ -1163,9 +1110,6 @@ task.spawn(function()
     end
 end)
 
--- ============================================================
--- ANTI-TRAP (FIX: raycast вверх)
--- ============================================================
 task.spawn(function()
     while true do
         if State.AntiTrap then
@@ -1201,9 +1145,6 @@ task.spawn(function()
     end
 end)
 
--- ============================================================
--- AUTO-AFK (FIX)
--- ============================================================
 task.spawn(function()
     while true do
         if State.AutoAFK then
@@ -1218,7 +1159,6 @@ task.spawn(function()
     end
 end)
 
--- SEARCH
 SearchBar:GetPropertyChangedSignal("Text"):Connect(function()
     local q = (SearchBar.Text or ""):lower()
     for _, row in ipairs(ItemScroll:GetChildren()) do
@@ -1233,7 +1173,6 @@ SearchBar:GetPropertyChangedSignal("Text"):Connect(function()
     end
 end)
 
--- BUTTON HANDLERS
 ScanBtn.MouseButton1Click:Connect(function()
     Notify("Scanning...", 2)
     task.wait(0.3)
@@ -1257,7 +1196,6 @@ ResetBtn.MouseButton1Click:Connect(function()
     Notify("Reset", 2)
 end)
 
--- Toggles handlers
 task.spawn(function()
     local lastESPItems = false
     local lastESPMonster = false
@@ -1274,7 +1212,6 @@ task.spawn(function()
     end
 end)
 
--- Авто-обновление списка (FIX: 3 сек вместо 1)
 task.spawn(function()
     task.wait(1)
     _G.__RefreshItemList()
@@ -1289,7 +1226,7 @@ end)
 print("[XyqwPiggy v" .. VERSION .. "] Part 2 loaded!")
 
 -- ============================================================
--- AUTOFARM: REMOTES
+-- AUTOFARM REMOTES
 -- ============================================================
 local FarmRemotes = { JoinGame = nil, VIPCommandEvent = nil }
 
@@ -1342,7 +1279,6 @@ local function SafeClickBtn(btn)
     end)
 end
 
--- FIX: рекурсивный поиск кнопок
 local function FindButtonRecursive(parent, name)
     if not parent then return nil end
     for _, obj in ipairs(parent:GetDescendants()) do
@@ -1355,7 +1291,6 @@ local function FindButtonRecursive(parent, name)
     return nil
 end
 
--- FIX: FarmPressPlay с рекурсивным поиском
 local function FarmPressPlay()
     if FarmRemotes.JoinGame then
         if SafeFireRemote(FarmRemotes.JoinGame, true) then
@@ -1376,7 +1311,6 @@ local function FarmPressPlay()
     return false
 end
 
--- FIX: FarmPressSkip с рекурсивным поиском
 local function FarmPressSkip()
     local pg = LP:FindFirstChild("PlayerGui")
     if not pg then return false end
@@ -1408,7 +1342,6 @@ local function FarmSetupGallery()
     return true
 end
 
--- FIX: FarmCollectOnce — использует GetListItems + fallback
 local function FarmCollectOnce()
     local collected = 0
     local char = LP.Character
@@ -1418,7 +1351,6 @@ local function FarmCollectOnce()
     local items = GetListItems()
 
     if #items == 0 then
-        -- Fallback: сканируем workspace напрямую
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("ClickDetector") then
                 local part = obj.Parent
@@ -1475,7 +1407,7 @@ end
 
 local function FarmMainLoop()
     State.FarmRunning = true
-    Notify("AutoFarm started!", 3)
+    Notify("[AUTOFARM] started!", 3)
     print("[XyqwPiggy] AutoFarm: loop started")
     RefreshFarmRemotes()
 
@@ -1484,7 +1416,7 @@ local function FarmMainLoop()
         State.FarmItemsCollected = 0
         State.FarmLastActivity = tick()
 
-        Notify("Cycle #" .. State.FarmCurrentCycle, 2)
+        Notify("[AUTOFARM] Cycle #" .. State.FarmCurrentCycle, 2)
 
         local phase = GetGamePhase()
         if not phase or phase == "GameInProgress" then
@@ -1529,7 +1461,7 @@ local function FarmMainLoop()
             task.wait(2)
             if State.FarmConfig.AUTO_COLLECT then
                 FarmCollectLoop()
-                Notify("Collected: " .. State.FarmItemsCollected, 3)
+                Notify("[AUTOFARM] Collected: " .. State.FarmItemsCollected, 3)
                 print("[XyqwPiggy] Cycle #" .. State.FarmCurrentCycle .. " collected: " .. State.FarmItemsCollected)
             end
             if State.FarmConfig.AUTO_SKIP and not State.FarmNeedStop then
@@ -1544,15 +1476,12 @@ local function FarmMainLoop()
     end
 
     State.FarmRunning = false
-    Notify("⏹ AutoFarm stopped", 3)
+    Notify("[AUTOFARM] stopped", 3)
     print("[XyqwPiggy] AutoFarm: loop stopped")
 end
 
 _G.__FarmMainLoop = FarmMainLoop
 
--- ============================================================
--- AUTO FARM CONFIRM WINDOW
--- ============================================================
 local function IsPrivateServer()
     local gf = workspace:FindFirstChild("GameFolder")
     if gf then
@@ -1623,10 +1552,10 @@ local function ShowAutoFarmConfirm()
     serverStatus.Position = UDim2.new(0, 10, 0, 110)
     serverStatus.BackgroundTransparency = 1
     if isPrivate then
-        serverStatus.Text = "✅ You are currently on a PRIVATE server."
+        serverStatus.Text = "[OK] You are on a PRIVATE server."
         serverStatus.TextColor3 = Color3.fromRGB(0, 255, 100)
     else
-        serverStatus.Text = "⚠You are currently on a PUBLIC server, AutoFarm may not work!"
+        serverStatus.Text = "[!] You are on a PUBLIC server, AutoFarm may not work!"
         serverStatus.TextColor3 = Color3.fromRGB(255, 0, 0)
     end
     serverStatus.TextScaled = true
@@ -1667,7 +1596,6 @@ local function ShowAutoFarmConfirm()
     runBtn.Parent = confirmFrame
     runBtn.AutoButtonColor = false
     local rbc = Instance.new("UICorner"); rbc.CornerRadius = UDim.new(0, 6); rbc.Parent = runBtn
-    -- FIX: один UIStroke, сохраняем ссылку
     local runStroke = AddStroke(runBtn, THEME.SUB, 2)
     AddTextStroke(runBtn)
 
@@ -1700,14 +1628,11 @@ local function ShowAutoFarmConfirm()
         State.FarmNeedStop = false
         State.FarmCurrentCycle = 0
         State.FarmItemsCollected = 0
-        Notify("🚀 Launching AutoFarm...", 2)
+        Notify("[AUTOFARM] Launching...", 2)
         task.spawn(FarmMainLoop)
     end)
 end
 
--- ============================================================
--- MISC BUTTONS: AutoFarm
--- ============================================================
 local function MakeMiscBtn(name, color, onClick)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1, -4, 0, 34)
@@ -1750,15 +1675,15 @@ local function MakeMiscBtn(name, color, onClick)
     end)
 end
 
-MakeMiscBtn("Run AutoFarm", Color3.fromRGB(0, 200, 255), function()
+MakeMiscBtn("[RUN] AutoFarm", Color3.fromRGB(0, 200, 255), function()
     Notify("Opening AutoFarm...", 2)
     ShowAutoFarmConfirm()
 end)
 
-MakeMiscBtn("Stop AutoFarm", Color3.fromRGB(255, 0, 0), function()
+MakeMiscBtn("[STOP] AutoFarm", Color3.fromRGB(255, 0, 0), function()
     State.FarmNeedStop = true
     State.FarmRunning = false
-    Notify("AutoFarm stopped", 2)
+    Notify("[AUTOFARM] stopped", 2)
 end)
 
 -- ============================================================
@@ -1780,8 +1705,15 @@ end)
 -- ============================================================
 print("[XyqwPiggy v" .. VERSION .. "] Loaded!")
 print("[XyqwPiggy v" .. VERSION .. "] Game: " .. CURRENT_GAME.name)
-print("[XyqwPiggy v" .. VERSION .. "] SkinChanger via loadScriptFromURL")
-print("[XyqwPiggy v" .. VERSION .. "] AutoFarm in Misc")
 print("[XyqwPiggy v" .. VERSION .. "] By Xyqwerq")
 
 Notify("XyqwPiggy v" .. VERSION .. " loaded!", 4)
+
+end) -- конец pcall
+
+if not _ok then
+    warn("[XyqwPiggy FATAL ERROR] " .. tostring(_err))
+    print("[XyqwPiggy FATAL ERROR] " .. tostring(_err))
+else
+    print("[XyqwPiggy] Script finished without errors")
+end
