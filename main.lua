@@ -2,7 +2,7 @@
 -- ========== XyqwPiggy v7.1 UNIVERSAL ==========
 -- ============================================================
 -- Автор: Xyqwerq
--- ✅ SkinChanger через addButton (loadScriptFromURL)
+-- ✅ SkinChanger через loadScriptFromURL
 -- ✅ AutoFarm Gallery
 -- ✅ Book 1 + Book 2 предметы
 -- ✅ Исправлен скролл Misc
@@ -64,14 +64,13 @@ local function AddTextStroke(label)
 end
 
 -- ============================================================
--- ⭐ ADD BUTTON (как в XyqwHub) — загрузка скриптов по URL
+-- LOAD SCRIPT FROM URL
 -- ============================================================
 local function loadScriptFromURL(url, name)
     Notify("Loading " .. (name or "script") .. "...", 2)
     print("[XyqwPiggy] Loading: " .. url)
     
     local ok, err = pcall(function()
-        -- Способ 1: loadstring + HttpGet
         if loadstring and game.HttpGet then
             local source = game.HttpGet(url)
             if source and #source > 0 then
@@ -83,8 +82,6 @@ local function loadScriptFromURL(url, name)
                 end
             end
         end
-        
-        -- Способ 2: request
         if request then
             local r = request({Url = url, Method = "GET"})
             if r and r.Body then
@@ -96,8 +93,6 @@ local function loadScriptFromURL(url, name)
                 end
             end
         end
-        
-        -- Способ 3: http_request
         if http_request then
             local r = http_request({Url = url, Method = "GET"})
             if r and r.Body then
@@ -109,7 +104,6 @@ local function loadScriptFromURL(url, name)
                 end
             end
         end
-        
         error("All methods failed")
     end)
     
@@ -117,50 +111,6 @@ local function loadScriptFromURL(url, name)
         Notify("Failed: " .. tostring(err), 4)
         print("[XyqwPiggy] Error: " .. tostring(err))
     end
-end
-
-local function addButton(name, url, parent)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, -4, 0, 32)
-    btn.BackgroundColor3 = THEME.DARK
-    btn.TextColor3 = THEME.MAIN
-    btn.Text = name
-    btn.TextScaled = true
-    btn.Font = Enum.Font.GothamBold
-    btn.BorderSizePixel = 2
-    btn.BorderColor3 = THEME.MAIN
-    btn.Parent = parent
-    btn.AutoButtonColor = false
-    local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 6); bc.Parent = btn
-    AddStroke(btn, THEME.MAIN, 2); AddTextStroke(btn)
-    
-    local pressStart, pressPos, moved, tracking = 0, nil, false, false
-    btn.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            pressStart = tick(); pressPos = input.Position; moved = false; tracking = true
-        end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if tracking and pressPos and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            if (input.Position - pressPos).Magnitude > 8 then moved = true end
-        end
-    end)
-    UserInputService.InputEnded:Connect(function(input)
-        if not tracking then return end
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            tracking = false
-            local held = tick() - pressStart
-            if not moved and held < 0.4 then
-                local mp = input.Position
-                local cp, cs = btn.AbsolutePosition, btn.AbsoluteSize
-                if mp.X >= cp.X and mp.X <= cp.X + cs.X and mp.Y >= cp.Y and mp.Y <= cp.Y + cs.Y then
-                    loadScriptFromURL(url, name)
-                end
-            end
-        end
-    end)
-    
-    return btn
 end
 
 -- ============================================================
@@ -177,6 +127,23 @@ local State = {
     AutoAFK = false,
     lastScrollMisc = 0,
     miscScrolling = false,
+    FarmRunning = false,
+    FarmNeedStop = false,
+    FarmCurrentCycle = 0,
+    FarmItemsCollected = 0,
+    FarmLastActivity = tick(),
+    FarmConfig = {
+        MAP = "Gallery",
+        MODE = "Swarm",
+        SKIP_TIMER = true,
+        COLLECT_DELAY = 0.05,
+        RESCAN_DELAY = 0.3,
+        MAX_GAME_TIME = 180,
+        AUTO_LOOP = true,
+        AUTO_PLAY = true,
+        AUTO_SKIP = true,
+        AUTO_COLLECT = true,
+    },
 }
 
 -- CLEANUP
@@ -225,7 +192,7 @@ ScreenGui.DisplayOrder = 999
 pcall(function() ScreenGui.Parent = CoreGui end)
 if not ScreenGui.Parent then ScreenGui.Parent = playerGui end
 
--- DOCK "XyqwPiggy" (закруглённая, красная обводка)
+-- DOCK
 local DockBtn = Instance.new("TextButton")
 DockBtn.Size = UDim2.new(0, 110, 0, 38)
 DockBtn.Position = UDim2.new(0.03, 0, 0.15, 0)
@@ -254,7 +221,7 @@ MainFrame.Visible = false
 MainFrame.Parent = ScreenGui
 local MC = Instance.new("UICorner"); MC.CornerRadius = UDim.new(0, 10); MC.Parent = MainFrame
 
--- TITLE
+-- TITLE BAR
 local TitleBar = Instance.new("Frame")
 TitleBar.Size = UDim2.new(1, 0, 0, 28)
 TitleBar.BackgroundColor3 = THEME.TITLE
@@ -430,9 +397,7 @@ local OpenGameBtn = MakeBtn("Menu", 0.25, 0.24)
 local RefreshBalBtn = MakeBtn("Balance", 0.50, 0.24)
 local ResetBtn = MakeBtn("Reset", 0.75, 0.24)
 
--- ============================================================
 -- MISC FRAME
--- ============================================================
 local MiscFrame = Instance.new("Frame")
 MiscFrame.Size = UDim2.new(0, 230, 0, 320)
 MiscFrame.Position = UDim2.new(0.5, 220, 0.5, -160)
@@ -511,9 +476,7 @@ MiscScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
     end)
 end)
 
--- ============================================================
 -- TOGGLE BUILDER
--- ============================================================
 local function MakeToggle(name, getState, onToggle)
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1, -4, 0, 28)
@@ -596,6 +559,108 @@ MakeToggle("ESP Monster", function() return State.ESPMonster end, function() Sta
 MakeToggle("ESP Players", function() return State.ESPPlayers end, function() State.ESPPlayers = not State.ESPPlayers end)
 MakeToggle("Anti-Trap", function() return State.AntiTrap end, function() State.AntiTrap = not State.AntiTrap end)
 MakeToggle("Auto-AFK", function() return State.AutoAFK end, function() State.AutoAFK = not State.AutoAFK end)
+
+-- DRAG MAIN
+local mDrag, mStart, mStartPos = false, nil, nil
+TitleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        local mp = input.Position
+        local function over(b)
+            local p, s = b.AbsolutePosition, b.AbsoluteSize
+            return mp.X >= p.X and mp.X <= p.X + s.X and mp.Y >= p.Y and mp.Y <= p.Y + s.Y
+        end
+        if over(CloseBtn) or over(MiscBtn) or over(SkinBtn) then return end
+        mDrag = true; mStart = input.Position; mStartPos = MainFrame.Position
+    end
+end)
+TitleBar.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        mDrag = false
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if mDrag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local d = input.Position - mStart
+        MainFrame.Position = UDim2.new(mStartPos.X.Scale, mStartPos.X.Offset + d.X, mStartPos.Y.Scale, mStartPos.Y.Offset + d.Y)
+    end
+end)
+
+-- MISC DRAG
+local miDrag, miStart, miStartPos = false, nil, nil
+MiscTitleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        local mp = input.Position
+        local p, s = MiscClose.AbsolutePosition, MiscClose.AbsoluteSize
+        if mp.X >= p.X and mp.X <= p.X + s.X and mp.Y >= p.Y and mp.Y <= p.Y + s.Y then return end
+        miDrag = true; miStart = input.Position; miStartPos = MiscFrame.Position
+    end
+end)
+MiscTitleBar.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        miDrag = false
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if miDrag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local d = input.Position - miStart
+        MiscFrame.Position = UDim2.new(miStartPos.X.Scale, miStartPos.X.Offset + d.X, miStartPos.Y.Scale, miStartPos.Y.Offset + d.Y)
+    end
+end)
+
+-- BUTTONS
+CloseBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+    MiscFrame.Visible = false
+    DockBtn.Visible = true
+end)
+
+MiscBtn.MouseButton1Click:Connect(function()
+    MiscFrame.Visible = not MiscFrame.Visible
+end)
+MiscClose.MouseButton1Click:Connect(function()
+    MiscFrame.Visible = false
+end)
+
+-- DOCK DRAG
+local dockDrag, dockStart, dockStartPos, dockMoved = false, nil, nil, false
+DockBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dockDrag = true; dockMoved = false
+        dockStart = input.Position; dockStartPos = DockBtn.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dockDrag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local d = input.Position - dockStart
+        if math.abs(d.X) > 5 or math.abs(d.Y) > 5 then dockMoved = true end
+        if dockMoved then
+            DockBtn.Position = UDim2.new(dockStartPos.X.Scale, dockStartPos.X.Offset + d.X, dockStartPos.Y.Scale, dockStartPos.Y.Offset + d.Y)
+        end
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and dockDrag then
+        if not dockMoved then
+            MainFrame.Visible = true
+            DockBtn.Visible = false
+        end
+        dockDrag = false
+    end
+end)
+
+-- AUTO-REFRESH BALANCE
+task.spawn(function()
+    while true do
+        task.wait(3)
+        pcall(function()
+            if MainFrame and MainFrame.Parent then
+                BalanceLabel.Text = "Piggy Coins: " .. GetPiggyCoins()
+            end
+        end)
+    end
+end)
+
+print("[XyqwPiggy v" .. VERSION .. "] Part 1 loaded!")
 -- ============================================================
 -- ESP FOLDER
 -- ============================================================
@@ -1088,12 +1153,10 @@ task.spawn(function()
             end)
         end
         task.wait(60)
-    end)
+    end
 end)
 
--- ============================================================
 -- SEARCH
--- ============================================================
 SearchBar:GetPropertyChangedSignal("Text"):Connect(function()
     local q = (SearchBar.Text or ""):lower()
     for _, row in ipairs(ItemScroll:GetChildren()) do
@@ -1108,9 +1171,7 @@ SearchBar:GetPropertyChangedSignal("Text"):Connect(function()
     end
 end)
 
--- ============================================================
 -- BUTTON HANDLERS
--- ============================================================
 ScanBtn.MouseButton1Click:Connect(function()
     Notify("Scanning...", 2)
     task.wait(0.3)
@@ -1121,7 +1182,7 @@ OpenGameBtn.MouseButton1Click:Connect(function()
     local mainMenu = LP.PlayerGui:FindFirstChild("MainMenu")
     if mainMenu then
         local skf = mainMenu:FindFirstChild("SkinsFrame")
-        if skf then skf.Visible = true Notify("Menu opened", 2) end
+        if skf then skf.Visible = true; Notify("Menu opened", 2) end
     end
 end)
 
@@ -1537,7 +1598,7 @@ local function ShowAutoFarmConfirm()
 end
 
 -- ============================================================
--- MISC BUTTONS: AutoFarm + SkinChanger
+-- MISC BUTTONS: AutoFarm
 -- ============================================================
 local function MakeMiscBtn(name, color, onClick)
     local btn = Instance.new("TextButton")
@@ -1592,7 +1653,7 @@ MakeMiscBtn("⏹ Stop AutoFarm", Color3.fromRGB(255, 0, 0), function()
 end)
 
 -- ============================================================
--- ⭐ SKINCHANGER через addButton (как в XyqwHub)
+-- SKINCHANGER через loadScriptFromURL
 -- ============================================================
 local SKINCHANGER_URL = "https://raw.githubusercontent.com/Xyqwerq/XyqwSkinChanger-Piggy/main/main.lua"
 
@@ -1605,89 +1666,12 @@ SkinBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ============================================================
--- DRAG MAIN
--- ============================================================
-local mDrag, mStart, mStartPos = false, nil, nil
-TitleBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        local mp = input.Position
-        local function over(b)
-            local p, s = b.AbsolutePosition, b.AbsoluteSize
-            return mp.X >= p.X and mp.X <= p.X + s.X and mp.Y >= p.Y and mp.Y <= p.Y + s.Y
-        end
-        if over(CloseBtn) or over(MiscBtn) or over(SkinBtn) then return end
-        mDrag = true; mStart = input.Position; mStartPos = MainFrame.Position
-    end
-end)
-TitleBar.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        mDrag = false
-    end
-end)
-UserInputService.InputChanged:Connect(function(input)
-    if mDrag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local d = input.Position - mStart
-        MainFrame.Position = UDim2.new(mStartPos.X.Scale, mStartPos.X.Offset + d.X, mStartPos.Y.Scale, mStartPos.Y.Offset + d.Y)
-    end
-end)
-
-CloseBtn.MouseButton1Click:Connect(function()
-    MainFrame.Visible = false
-    MiscFrame.Visible = false
-    DockBtn.Visible = true
-end)
-
-MiscBtn.MouseButton1Click:Connect(function()
-    MiscFrame.Visible = not MiscFrame.Visible
-end)
-MiscClose.MouseButton1Click:Connect(function()
-    MiscFrame.Visible = false
-end)
-
--- DOCK drag
-local dockDrag, dockStart, dockStartPos, dockMoved = false, nil, nil, false
-DockBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dockDrag = true; dockMoved = false
-        dockStart = input.Position; dockStartPos = DockBtn.Position
-    end
-end)
-UserInputService.InputChanged:Connect(function(input)
-    if dockDrag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local d = input.Position - dockStart
-        if math.abs(d.X) > 5 or math.abs(d.Y) > 5 then dockMoved = true end
-        if dockMoved then
-            DockBtn.Position = UDim2.new(dockStartPos.X.Scale, dockStartPos.X.Offset + d.X, dockStartPos.Y.Scale, dockStartPos.Y.Offset + d.Y)
-        end
-    end
-end)
-UserInputService.InputEnded:Connect(function(input)
-    if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and dockDrag then
-        if not dockMoved then
-            MainFrame.Visible = true
-            DockBtn.Visible = false
-        end
-        dockDrag = false
-    end
-end)
-
--- AUTO-REFRESH BALANCE
-task.spawn(function()
-    while true do
-        task.wait(3)
-        if MainFrame.Parent then
-            BalanceLabel.Text = "Piggy Coins: " .. GetPiggyCoins()
-        end
-    end
-end)
-
--- ============================================================
 -- LOAD
 -- ============================================================
 print("[XyqwPiggy v" .. VERSION .. "] Loaded!")
 print("[XyqwPiggy v" .. VERSION .. "] Game: " .. CURRENT_GAME.name)
-print("[XyqwPiggy v" .. VERSION .. "] SkinChanger через addButton (loadScriptFromURL)")
-print("[XyqwPiggy v" .. VERSION .. "] AutoFarm в Misc")
+print("[XyqwPiggy v" .. VERSION .. "] SkinChanger via loadScriptFromURL")
+print("[XyqwPiggy v" .. VERSION .. "] AutoFarm in Misc")
 print("[XyqwPiggy v" .. VERSION .. "] By Xyqwerq")
 
 Notify("XyqwPiggy v" .. VERSION .. " loaded!", 4)
