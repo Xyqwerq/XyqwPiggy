@@ -1,8 +1,14 @@
--- ========== XyqwPiggy v6.1 UNIVERSAL ==========
--- Piggy Script | made by Xyqwerq
--- Имена из part.Name | Gear fix | Стабильные ключи
+-- ============================================================
+-- ========== XyqwPiggy v7.0 UNIVERSAL ==========
+-- ============================================================
+-- Автор: Xyqwerq
+-- ✅ SkinChanger через loadstring (кнопка SkinChanger)
+-- ✅ AutoFarm Gallery
+-- ✅ Book 1 + Book 2 предметы
+-- ✅ Исправлен скролл Misc
+-- ============================================================
 
-local VERSION = "6.1"
+local VERSION = "7.0"
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
@@ -11,30 +17,30 @@ local StarterGui        = game:GetService("StarterGui")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LP                = Players.LocalPlayer
 
+-- ============================================================
 -- CONFIG
+-- ============================================================
 local GAME_CONFIGS = {
     [4623386862] = { name = "Piggy Book 1" },
     [5661005779] = { name = "Piggy Book 2" },
 }
+local CURRENT_GAME = GAME_CONFIGS[game.PlaceId] or { name = "Unknown" }
 
-local CURRENT_GAME = GAME_CONFIGS[game.PlaceId]
-if not CURRENT_GAME then
-    CURRENT_GAME = { name = "Unknown Piggy (" .. game.PlaceId .. ")" }
-end
-
+-- ============================================================
 -- THEME
+-- ============================================================
 local THEME = {
     BG     = Color3.fromRGB(0, 0, 0),
     DARK   = Color3.fromRGB(40, 0, 0),
     MAIN   = Color3.fromRGB(255, 0, 0),
     TITLE  = Color3.fromRGB(20, 0, 0),
-    SUB    = Color3.fromRGB(180, 180, 180),
+    SUB    = Color3.fromRGB(200, 200, 200),
     ON     = Color3.fromRGB(0, 220, 90),
     OFF    = Color3.fromRGB(220, 0, 0),
     STROKE = Color3.fromRGB(120, 0, 0),
-    ITEM   = Color3.fromRGB(255, 0, 0),
     WARN   = Color3.fromRGB(255, 200, 0),
     OK     = Color3.fromRGB(0, 255, 100),
+    GOLD   = Color3.fromRGB(255, 215, 0),
 }
 
 local function Notify(text, duration)
@@ -49,213 +55,49 @@ end
 local function AddStroke(parent, color, thickness)
     local s = Instance.new("UIStroke")
     s.Color = color or THEME.STROKE
-    s.Thickness = thickness or 1.5
+    s.Thickness = thickness or 1
     s.Parent = parent
     return s
 end
 
 local function AddTextStroke(label)
     local s = Instance.new("UIStroke")
-    s.Color = THEME.STROKE
-    s.Thickness = 1
-    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+    s.Color = Color3.fromRGB(0, 0, 0)
+    s.Thickness = 1.5
     s.Parent = label
 end
 
 -- ============================================================
--- GET ITEM NAME (v6.1)
--- ============================================================
-local function GetKeyNameByColor(c)
-    local h, s, v = Color3.toHSV(c)
-    if s < 0.15 then return "White Key" end
-    local hd = h * 360
-    if hd < 15 or hd >= 345 then return "Red Key" end
-    if hd < 45 then return "Orange Key" end
-    if hd < 70 then return "Yellow Key" end
-    if hd < 160 then return "Green Key" end
-    if hd < 200 then return "Cyan Key" end
-    if hd < 260 then return "Blue Key" end
-    if hd < 290 then return "Purple Key" end
-    if hd < 345 then return "Pink Key" end
-    return "Key"
-end
-
-local function GetItemName(item)
-    local part = item.part
-    if not part then return "Unknown" end
-
-    -- 1) part.Name если осмысленное
-    local n = part.Name
-    if n and n ~= "" and not n:match("^%-?%d+$") then
-        return n
-    end
-
-    -- 2) MeshId mapping (ТОЧНО — до цветов!)
-    local mesh = part:FindFirstChildOfClass("SpecialMesh")
-    local meshId = mesh and mesh.MeshId or nil
-
-    if meshId == "rbxassetid://524706126" then return "Gear" end
-    if meshId == "rbxassetid://725833400" then return "Hammer" end
-    if meshId == "http://www.roblox.com/asset/?id=16198309" then return "Plank" end
-    if meshId == "http://www.roblox.com/asset/?id=72012879" then return "Battery" end
-    if meshId == "http://www.roblox.com/asset/?id=16884681" then return "Wrench" end
-    if meshId == "rbxassetid://6714051581" then return "Note" end
-    if meshId == "http://www.roblox.com/asset/?id=60791940" then return "Gear" end
-    if meshId == "http://www.roblox.com/asset/?id=12891705" then return "Wrench" end
-    if meshId == "http://www.roblox.com/asset/?id=70265804" then return "Screwdriver" end
-    if meshId == "http://www.roblox.com/asset/?id=36365830" then return "Gear" end
-    if meshId == "rbxassetid://1771168429" then return "Item" end
-
-    -- 3) Key — MeshId 456878024 + цвет
-    if meshId == "rbxassetid://456878024" then
-        local pe = part:FindFirstChildOfClass("ParticleEmitter")
-        if pe and pe.Color and pe.Color.Keypoints and #pe.Color.Keypoints > 0 then
-            return GetKeyNameByColor(pe.Color.Keypoints[1].Value)
-        end
-        return "Key"
-    end
-
-    -- 4) Fallback — Name Encrypted (НЕ Key!)
-    return "Name Encrypted"
-end
-
--- ============================================================
--- MENU
--- ============================================================
-local MENU_NAMES = {
-    MenuCameras = true, MainMenuForest = true, MainMenuScreen = true,
-    ItemsScreen = true, ItemsFocus = true, ItemsCamera = true,
-    MenuPositions = true, MenuStorage = true, AbilityMenuStorage = true,
-}
-local function IsInMenu(part)
-    local c = part
-    local depth = 0
-    while c and depth < 8 do
-        if MENU_NAMES[c.Name] then return true end
-        c = c.Parent
-        depth = depth + 1
-    end
-    return false
-end
-
--- SAFE
-local SAFE_WORDS = {
-    "safe", "locker", "vault", "cabinet", "fridge",
-    "closet", "drawer", "crate", "longcrate", "chest",
-}
-
-local function IsInsideSafe(part)
-    local c = part
-    local depth = 0
-    while c and depth < 8 do
-        local n = c.Name:lower()
-        for _, kw in ipairs(SAFE_WORDS) do
-            if n == kw or n:find(kw, 1, true) then return true, c end
-        end
-        c = c.Parent
-        depth = depth + 1
-    end
-    return false, nil
-end
-
-local function IsDoor(part)
-    for _, ch in ipairs(part:GetChildren()) do
-        if ch:IsA("Script") and ch.Name:match("^%-?%d+$") then
-            return true
-        end
-    end
-    return false
-end
-
-local function IsRealItem(part)
-    if IsDoor(part) then return false end
-
-    if part:FindFirstChildOfClass("ParticleEmitter") then return true end
-
-    for _, ch in ipairs(part:GetChildren()) do
-        if ch:IsA("Script") and (ch.Name == "ItemPickupScript" or ch.Name == "NewItemPickupScript") then
-            return true
-        end
-    end
-
-    for _, ch in ipairs(part:GetChildren()) do
-        if ch:IsA("RemoteEvent") and ch.Name == "ClickEvent" then return true end
-    end
-
-    local isSafe = IsInsideSafe(part)
-    if isSafe then
-        if part:FindFirstChildOfClass("ClickDetector") then return true end
-    end
-
-    return false
-end
-
-local function IsAlreadyPickedUp(part)
-    local isSafe = IsInsideSafe(part)
-    if isSafe then
-        local cd = part:FindFirstChildOfClass("ClickDetector")
-        if cd and cd.MaxActivationDistance <= 0 then return true end
-        return false
-    end
-    if part.Transparency >= 1 then return true end
-    local pe = part:FindFirstChildOfClass("ParticleEmitter")
-    if pe and not pe.Enabled then return true end
-    local cd = part:FindFirstChildOfClass("ClickDetector")
-    if cd and cd.MaxActivationDistance <= 0 then return true end
-    return false
-end
-
--- ============================================================
--- STABLE KEY (v6.1) — MeshId + позиция (не part.Name!)
--- ============================================================
-local function GetStableKey(part)
-    local mesh = part:FindFirstChildOfClass("SpecialMesh")
-    local meshId = mesh and mesh.MeshId or ""
-    local p = part.Position
-    local x = math.floor(p.X * 10 + 0.5) / 10
-    local y = math.floor(p.Y * 10 + 0.5) / 10
-    local z = math.floor(p.Z * 10 + 0.5) / 10
-    return string.format("%s_%.1f_%.1f_%.1f", meshId, x, y, z)
-end
-
-local function GetListItems()
-    local items = {}
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("ClickDetector") then
-            local part = obj.Parent
-            if part and part:IsA("BasePart") and not IsInMenu(part) then
-                if IsRealItem(part) and not IsAlreadyPickedUp(part) then
-                    local isSafe, safeParent = IsInsideSafe(part)
-                    table.insert(items, {
-                        part = part,
-                        detector = obj,
-                        key = GetStableKey(part),
-                        pos = part.Position,
-                        isSafe = isSafe,
-                        safeParent = safeParent,
-                    })
-                end
-            end
-        end
-    end
-    table.sort(items, function(a, b)
-        if math.abs(a.pos.X - b.pos.X) > 0.5 then return a.pos.X < b.pos.X end
-        if math.abs(a.pos.Z - b.pos.Z) > 0.5 then return a.pos.Z < b.pos.Z end
-        return a.pos.Y < b.pos.Y
-    end)
-    return items
-end
-
 -- STATE
+-- ============================================================
 local State = {
-    ESP = { Items = false, Monster = false, Players = false },
-    ToolIndicator = false,
-    AntiTrap = false,
-    DeletePiggy = false,
-    Picking = false,
+    ScannedItems = {},
+    SpinningModels = {},
+    CurrentEquipped = nil,
+    FarmRunning = false,
+    FarmNeedStop = false,
+    FarmCurrentCycle = 0,
+    FarmItemsCollected = 0,
+    FarmLastActivity = tick(),
+    FarmConfig = {
+        MAP = "Gallery",
+        MODE = "Swarm",
+        SKIP_TIMER = true,
+        COLLECT_DELAY = 0.05,
+        RESCAN_DELAY = 0.3,
+        MAX_GAME_TIME = 180,
+        AUTO_LOOP = true,
+        AUTO_PLAY = true,
+        AUTO_SKIP = true,
+        AUTO_COLLECT = true,
+    },
+    lastScrollMisc = 0,
+    miscScrolling = false,
 }
 
+-- ============================================================
 -- CLEANUP
+-- ============================================================
 for _, obj in ipairs(CoreGui:GetChildren()) do
     if obj.Name == "XyqwPiggy" or obj.Name == "XyqwPiggyESP" then
         pcall(function() obj:Destroy() end)
@@ -268,7 +110,32 @@ for _, obj in ipairs(playerGui:GetChildren()) do
     end
 end
 
+-- ============================================================
+-- BALANCE
+-- ============================================================
+local function GetPiggyCoins()
+    local pg = LP:FindFirstChild("PlayerGui")
+    if pg then
+        local mm = pg:FindFirstChild("MainMenu")
+        if mm then
+            local cs = mm:FindFirstChild("CurrencyShop")
+            if cs then
+                local cf = cs:FindFirstChild("CashFrame")
+                if cf then
+                    local cn = cf:FindFirstChild("CashNumber")
+                    if cn and cn:IsA("TextLabel") then
+                        return cn.Text
+                    end
+                end
+            end
+        end
+    end
+    return "?"
+end
+
+-- ============================================================
 -- SCREEN GUI
+-- ============================================================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "XyqwPiggy"
 ScreenGui.ResetOnSpawn = false
@@ -278,29 +145,52 @@ ScreenGui.DisplayOrder = 999
 pcall(function() ScreenGui.Parent = CoreGui end)
 if not ScreenGui.Parent then ScreenGui.Parent = playerGui end
 
+-- ============================================================
+-- ⭐ DOCK кнопка "XyqwPiggy" (закруглённая с красной обводкой)
+-- ============================================================
+local DockBtn = Instance.new("TextButton")
+DockBtn.Size = UDim2.new(0, 110, 0, 38)
+DockBtn.Position = UDim2.new(0.03, 0, 0.15, 0)
+DockBtn.BackgroundColor3 = THEME.BG
+DockBtn.TextColor3 = THEME.MAIN
+DockBtn.Text = "XyqwPiggy"
+DockBtn.TextScaled = true
+DockBtn.Font = Enum.Font.GothamBold
+DockBtn.BorderSizePixel = 0
+DockBtn.Parent = ScreenGui
+DockBtn.AutoButtonColor = false
+DockBtn.ZIndex = 1000
+local DBC = Instance.new("UICorner"); DBC.CornerRadius = UDim.new(0, 12); DBC.Parent = DockBtn
+AddStroke(DockBtn, THEME.MAIN, 2); AddTextStroke(DockBtn)
+
+-- ============================================================
 -- MAIN FRAME
+-- ============================================================
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 320, 0, 380)
-MainFrame.Position = UDim2.new(0.5, -160, 0.3, 0)
+MainFrame.Size = UDim2.new(0.92, 0, 0.9, 0)
+MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 MainFrame.BackgroundColor3 = THEME.BG
 MainFrame.BorderSizePixel = 3
 MainFrame.BorderColor3 = THEME.MAIN
 MainFrame.Active = true
+MainFrame.Visible = false
 MainFrame.Parent = ScreenGui
 local MC = Instance.new("UICorner"); MC.CornerRadius = UDim.new(0, 10); MC.Parent = MainFrame
 
+-- TITLE
 local TitleBar = Instance.new("Frame")
-TitleBar.Size = UDim2.new(1, 0, 0, 30)
+TitleBar.Size = UDim2.new(1, 0, 0, 28)
 TitleBar.BackgroundColor3 = THEME.TITLE
 TitleBar.BorderSizePixel = 0
 TitleBar.Parent = MainFrame
 local TC = Instance.new("UICorner"); TC.CornerRadius = UDim.new(0, 10); TC.Parent = TitleBar
 
 local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Size = UDim2.new(1, -80, 1, 0)
+TitleLabel.Size = UDim2.new(1, -160, 1, 0)
 TitleLabel.Position = UDim2.new(0, 8, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "XyqwPiggy v" .. VERSION .. " | " .. CURRENT_GAME.name
+TitleLabel.Text = "XyqwPiggy v" .. VERSION
 TitleLabel.TextColor3 = THEME.MAIN
 TitleLabel.TextScaled = true
 TitleLabel.Font = Enum.Font.GothamBold
@@ -308,24 +198,42 @@ TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = TitleBar
 AddTextStroke(TitleLabel)
 
+-- SkinChanger кнопка
+local SkinBtn = Instance.new("TextButton")
+SkinBtn.Size = UDim2.new(0, 80, 0, 22)
+SkinBtn.Position = UDim2.new(1, -146, 0.5, -11)
+SkinBtn.BackgroundColor3 = THEME.DARK
+SkinBtn.TextColor3 = THEME.MAIN
+SkinBtn.Text = "SkinChanger"
+SkinBtn.TextScaled = true
+SkinBtn.Font = Enum.Font.GothamBold
+SkinBtn.BorderSizePixel = 1
+SkinBtn.BorderColor3 = THEME.MAIN
+SkinBtn.Parent = TitleBar
+SkinBtn.AutoButtonColor = false
+local SKB = Instance.new("UICorner"); SKB.CornerRadius = UDim.new(0, 5); SKB.Parent = SkinBtn
+AddStroke(SkinBtn); AddTextStroke(SkinBtn)
+
+-- Misc кнопка
 local MiscBtn = Instance.new("TextButton")
-MiscBtn.Size = UDim2.new(0, 22, 0, 22)
-MiscBtn.Position = UDim2.new(1, -52, 0.5, -11)
+MiscBtn.Size = UDim2.new(0, 38, 0, 22)
+MiscBtn.Position = UDim2.new(1, -62, 0.5, -11)
 MiscBtn.BackgroundColor3 = THEME.DARK
 MiscBtn.TextColor3 = THEME.MAIN
-MiscBtn.Text = "M"
+MiscBtn.Text = "MISC"
 MiscBtn.TextScaled = true
 MiscBtn.Font = Enum.Font.GothamBold
 MiscBtn.BorderSizePixel = 1
 MiscBtn.BorderColor3 = THEME.MAIN
 MiscBtn.Parent = TitleBar
 MiscBtn.AutoButtonColor = false
-local MB = Instance.new("UICorner"); MB.CornerRadius = UDim.new(0, 5); MB.Parent = MiscBtn
+local MBC = Instance.new("UICorner"); MBC.CornerRadius = UDim.new(0, 5); MBC.Parent = MiscBtn
 AddStroke(MiscBtn); AddTextStroke(MiscBtn)
 
+-- Close
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 22, 0, 22)
-CloseBtn.Position = UDim2.new(1, -26, 0.5, -11)
+CloseBtn.Position = UDim2.new(1, -24, 0.5, -11)
 CloseBtn.BackgroundColor3 = THEME.DARK
 CloseBtn.TextColor3 = THEME.MAIN
 CloseBtn.Text = "X"
@@ -338,15 +246,39 @@ CloseBtn.AutoButtonColor = false
 local CB = Instance.new("UICorner"); CB.CornerRadius = UDim.new(0, 5); CB.Parent = CloseBtn
 AddStroke(CloseBtn); AddTextStroke(CloseBtn)
 
+-- BALANCE
+local BalanceFrame = Instance.new("Frame")
+BalanceFrame.Size = UDim2.new(1, -16, 0, 28)
+BalanceFrame.Position = UDim2.new(0, 8, 0, 32)
+BalanceFrame.BackgroundColor3 = THEME.DARK
+BalanceFrame.BorderSizePixel = 2
+BalanceFrame.BorderColor3 = THEME.GOLD
+BalanceFrame.Parent = MainFrame
+local BFC = Instance.new("UICorner"); BFC.CornerRadius = UDim.new(0, 6); BFC.Parent = BalanceFrame
+AddStroke(BalanceFrame, THEME.GOLD, 2)
+
+local BalanceLabel = Instance.new("TextLabel")
+BalanceLabel.Size = UDim2.new(1, -8, 1, 0)
+BalanceLabel.Position = UDim2.new(0, 4, 0, 0)
+BalanceLabel.BackgroundTransparency = 1
+BalanceLabel.Text = "Piggy Coins: ..."
+BalanceLabel.TextColor3 = THEME.GOLD
+BalanceLabel.TextScaled = true
+BalanceLabel.Font = Enum.Font.GothamBold
+BalanceLabel.TextXAlignment = Enum.TextXAlignment.Left
+BalanceLabel.Parent = BalanceFrame
+AddTextStroke(BalanceLabel)
+
+-- SEARCH
 local SearchBar = Instance.new("TextBox")
-SearchBar.Size = UDim2.new(1, -20, 0, 24)
-SearchBar.Position = UDim2.new(0, 10, 0, 36)
+SearchBar.Size = UDim2.new(1, -16, 0, 24)
+SearchBar.Position = UDim2.new(0, 8, 0, 66)
 SearchBar.BackgroundColor3 = THEME.DARK
 SearchBar.PlaceholderText = "Search items..."
 SearchBar.PlaceholderColor3 = THEME.SUB
 SearchBar.Text = ""
 SearchBar.TextColor3 = THEME.MAIN
-SearchBar.TextSize = 12
+SearchBar.TextScaled = true
 SearchBar.Font = Enum.Font.Gotham
 SearchBar.ClearTextOnFocus = false
 SearchBar.BorderSizePixel = 1
@@ -355,16 +287,20 @@ SearchBar.Parent = MainFrame
 local SC = Instance.new("UICorner"); SC.CornerRadius = UDim.new(0, 6); SC.Parent = SearchBar
 AddStroke(SearchBar); AddTextStroke(SearchBar)
 
+-- ITEM SCROLL
 local ItemScroll = Instance.new("ScrollingFrame")
-ItemScroll.Size = UDim2.new(1, -20, 1, -140)
-ItemScroll.Position = UDim2.new(0, 10, 0, 66)
-ItemScroll.BackgroundTransparency = 1
-ItemScroll.BorderSizePixel = 0
+ItemScroll.Size = UDim2.new(1, -16, 1, -180)
+ItemScroll.Position = UDim2.new(0, 8, 0, 96)
+ItemScroll.BackgroundColor3 = THEME.DARK
+ItemScroll.BorderSizePixel = 1
+ItemScroll.BorderColor3 = THEME.MAIN
 ItemScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-ItemScroll.ScrollBarThickness = 4
+ItemScroll.ScrollBarThickness = 5
 ItemScroll.ScrollBarImageColor3 = THEME.MAIN
 ItemScroll.ScrollingDirection = Enum.ScrollingDirection.Y
 ItemScroll.Parent = MainFrame
+local ISC = Instance.new("UICorner"); ISC.CornerRadius = UDim.new(0, 6); ISC.Parent = ItemScroll
+AddStroke(ItemScroll)
 
 local ItemLayout = Instance.new("UIListLayout")
 ItemLayout.Padding = UDim.new(0, 4)
@@ -373,93 +309,64 @@ ItemLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     ItemScroll.CanvasSize = UDim2.new(0, 0, 0, ItemLayout.AbsoluteContentSize.Y + 10)
 end)
 
-local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Size = UDim2.new(1, -20, 0, 16)
-StatusLabel.Position = UDim2.new(0, 10, 1, -68)
-StatusLabel.BackgroundTransparency = 1
-StatusLabel.Text = "Items: 0"
-StatusLabel.TextColor3 = THEME.SUB
-StatusLabel.TextSize = 11
-StatusLabel.Font = Enum.Font.GothamBold
-StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-StatusLabel.Parent = MainFrame
+-- INFO
+local InfoLabel = Instance.new("TextLabel")
+InfoLabel.Size = UDim2.new(1, -16, 0, 22)
+InfoLabel.Position = UDim2.new(0, 8, 1, -46)
+InfoLabel.BackgroundColor3 = THEME.DARK
+InfoLabel.TextColor3 = THEME.MAIN
+InfoLabel.Text = "0 items"
+InfoLabel.TextScaled = true
+InfoLabel.Font = Enum.Font.GothamBold
+InfoLabel.BorderSizePixel = 1
+InfoLabel.BorderColor3 = THEME.MAIN
+InfoLabel.Parent = MainFrame
+local IC = Instance.new("UICorner"); IC.CornerRadius = UDim.new(0, 5); IC.Parent = InfoLabel
+AddStroke(InfoLabel); AddTextStroke(InfoLabel)
 
-local ScanBtn = Instance.new("TextButton")
-ScanBtn.Size = UDim2.new(0, 140, 0, 32)
-ScanBtn.Position = UDim2.new(0.5, -70, 1, -42)
-ScanBtn.BackgroundColor3 = THEME.BG
-ScanBtn.TextColor3 = THEME.MAIN
-ScanBtn.Text = "Scan"
-ScanBtn.TextScaled = true
-ScanBtn.Font = Enum.Font.GothamBold
-ScanBtn.BorderSizePixel = 1
-ScanBtn.BorderColor3 = THEME.MAIN
-ScanBtn.Parent = MainFrame
-ScanBtn.AutoButtonColor = false
-ScanBtn.ZIndex = 10
-AddStroke(ScanBtn, THEME.MAIN, 2); AddTextStroke(ScanBtn)
+-- BOTTOM BUTTONS
+local BtnFrame = Instance.new("Frame")
+BtnFrame.Size = UDim2.new(1, -16, 0, 38)
+BtnFrame.Position = UDim2.new(0, 8, 1, -46)
+BtnFrame.BackgroundTransparency = 1
+BtnFrame.Parent = MainFrame
 
--- PROGRESS
-local ProgressFrame = Instance.new("Frame")
-ProgressFrame.Size = UDim2.new(1, -20, 0, 26)
-ProgressFrame.Position = UDim2.new(0, 10, 1, -94)
-ProgressFrame.BackgroundColor3 = THEME.DARK
-ProgressFrame.BorderSizePixel = 1
-ProgressFrame.BorderColor3 = THEME.WARN
-ProgressFrame.Visible = false
-ProgressFrame.Parent = MainFrame
-ProgressFrame.ZIndex = 5
-local PFC = Instance.new("UICorner"); PFC.CornerRadius = UDim.new(0, 6); PFC.Parent = ProgressFrame
-AddStroke(ProgressFrame, THEME.WARN, 1.5)
-
-local ProgressFill = Instance.new("Frame")
-ProgressFill.Size = UDim2.new(0, 0, 1, 0)
-ProgressFill.BackgroundColor3 = THEME.WARN
-ProgressFill.BorderSizePixel = 0
-ProgressFill.Parent = ProgressFrame
-ProgressFill.ZIndex = 6
-local PFillC = Instance.new("UICorner"); PFillC.CornerRadius = UDim.new(0, 6); PFillC.Parent = ProgressFill
-
-local ProgressLabel = Instance.new("TextLabel")
-ProgressLabel.Size = UDim2.new(1, -8, 1, 0)
-ProgressLabel.Position = UDim2.new(0, 4, 0, 0)
-ProgressLabel.BackgroundTransparency = 1
-ProgressLabel.Text = ""
-ProgressLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-ProgressLabel.TextSize = 11
-ProgressLabel.Font = Enum.Font.GothamBold
-ProgressLabel.TextXAlignment = Enum.TextXAlignment.Left
-ProgressLabel.ZIndex = 7
-ProgressLabel.Parent = ProgressFrame
-AddTextStroke(ProgressLabel)
-
-local function ShowProgress(text, currentTime, maxTime, color)
-    ProgressFrame.Visible = true
-    ProgressFrame.BorderColor3 = color or THEME.WARN
-    ProgressFill.BackgroundColor3 = color or THEME.WARN
-    local pct = math.clamp(currentTime / maxTime, 0, 1)
-    ProgressFill.Size = UDim2.new(pct, 0, 1, 0)
-    ProgressLabel.Text = string.format("%s (%.1f / %.1f сек)", text, currentTime, maxTime)
-    StatusLabel.Text = string.format("%s (%.1f сек)", text, currentTime)
-    StatusLabel.TextColor3 = color or THEME.WARN
+local function MakeBtn(name, x, w)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(w, 0, 1, 0)
+    btn.Position = UDim2.new(x, 0, 0, 0)
+    btn.BackgroundColor3 = THEME.DARK
+    btn.TextColor3 = THEME.MAIN
+    btn.Text = name
+    btn.TextScaled = true
+    btn.Font = Enum.Font.GothamBold
+    btn.BorderSizePixel = 1
+    btn.BorderColor3 = THEME.MAIN
+    btn.Parent = BtnFrame
+    btn.AutoButtonColor = false
+    local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 6); bc.Parent = btn
+    AddStroke(btn); AddTextStroke(btn)
+    return btn
 end
 
-local function HideProgress()
-    ProgressFrame.Visible = false
-    ProgressFill.Size = UDim2.new(0, 0, 1, 0)
-    StatusLabel.TextColor3 = THEME.SUB
-end
+local ScanBtn = MakeBtn("Scan", 0, 0.24)
+local OpenGameBtn = MakeBtn("Menu", 0.25, 0.24)
+local RefreshBalBtn = MakeBtn("Balance", 0.50, 0.24)
+local ResetBtn = MakeBtn("Reset", 0.75, 0.24)
 
+-- ============================================================
 -- MISC FRAME
+-- ============================================================
 local MiscFrame = Instance.new("Frame")
-MiscFrame.Size = UDim2.new(0, 220, 0, 250)
-MiscFrame.Position = UDim2.new(0.5, 180, 0.3, 0)
+MiscFrame.Size = UDim2.new(0, 230, 0, 300)
+MiscFrame.Position = UDim2.new(0.5, 220, 0.5, -150)
 MiscFrame.BackgroundColor3 = THEME.BG
 MiscFrame.BorderSizePixel = 3
 MiscFrame.BorderColor3 = THEME.MAIN
 MiscFrame.Active = true
 MiscFrame.Visible = false
 MiscFrame.Parent = ScreenGui
+MiscFrame.ZIndex = 10
 local MFC = Instance.new("UICorner"); MFC.CornerRadius = UDim.new(0, 10); MFC.Parent = MiscFrame
 
 local MiscTitleBar = Instance.new("Frame")
@@ -502,356 +409,35 @@ MiscScroll.Position = UDim2.new(0, 6, 0, 30)
 MiscScroll.BackgroundTransparency = 1
 MiscScroll.BorderSizePixel = 0
 MiscScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-MiscScroll.ScrollBarThickness = 4
+MiscScroll.ScrollBarThickness = 5
 MiscScroll.ScrollBarImageColor3 = THEME.MAIN
+MiscScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+MiscScroll.ScrollBarImageTransparency = 0.3
+MiscScroll.ElasticBehavior = Enum.ElasticBehavior.Never
 MiscScroll.Parent = MiscFrame
+local MiscScrollCorner = Instance.new("UICorner"); MiscScrollCorner.CornerRadius = UDim.new(0, 6); MiscScrollCorner.Parent = MiscScroll
+AddStroke(MiscScroll)
 
 local ML = Instance.new("UIListLayout")
 ML.Padding = UDim.new(0, 4)
+ML.SortOrder = Enum.SortOrder.LayoutOrder
 ML.Parent = MiscScroll
 ML:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    MiscScroll.CanvasSize = UDim2.new(0, 0, 0, ML.AbsoluteContentSize.Y + 10)
+    MiscScroll.CanvasSize = UDim2.new(0, 0, 0, ML.AbsoluteContentSize.Y + 15)
 end)
 
-local lastScrollItem, lastScrollMisc = 0, 0
-ItemScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
-    lastScrollItem = tick()
-end)
+-- ⭐ ФИКС СКРОЛЛА MISC
 MiscScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
-    lastScrollMisc = tick()
-end)
-
--- DOCK
-local DockBtn = Instance.new("TextButton")
-DockBtn.Size = UDim2.new(0, 110, 0, 32)
-DockBtn.Position = UDim2.new(0.5, -55, 0.05, 42)
-DockBtn.BackgroundColor3 = THEME.BG
-DockBtn.TextColor3 = THEME.MAIN
-DockBtn.Text = "XyqwPiggy"
-DockBtn.TextScaled = true
-DockBtn.Font = Enum.Font.GothamBold
-DockBtn.BorderSizePixel = 3
-DockBtn.BorderColor3 = THEME.MAIN
-DockBtn.Parent = ScreenGui
-DockBtn.Visible = false
-DockBtn.AutoButtonColor = false
-DockBtn.ZIndex = 999
-local DC = Instance.new("UICorner"); DC.CornerRadius = UDim.new(0, 10); DC.Parent = DockBtn
-AddTextStroke(DockBtn)
-
-local dockDrag, dockStart, dockStartPos, dockMoved = false, nil, nil, false
-DockBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dockDrag = true; dockMoved = false
-        dockStart = input.Position; dockStartPos = DockBtn.Position
-    end
-end)
-UserInputService.InputChanged:Connect(function(input)
-    if dockDrag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local d = input.Position - dockStart
-        if math.abs(d.X) > 5 or math.abs(d.Y) > 5 then dockMoved = true end
-        if dockMoved then
-            DockBtn.Position = UDim2.new(dockStartPos.X.Scale, dockStartPos.X.Offset + d.X, dockStartPos.Y.Scale, dockStartPos.Y.Offset + d.Y)
-        end
-    end
-end)
-UserInputService.InputEnded:Connect(function(input)
-    if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and dockDrag then
-        if not dockMoved then MainFrame.Visible = true; DockBtn.Visible = false end
-        dockDrag = false
-    end
-end)
-
--- DRAG MAIN
-local mDrag, mStart, mStartPos = false, nil, nil
-TitleBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        local mp = input.Position
-        local function over(b)
-            local p, s = b.AbsolutePosition, b.AbsoluteSize
-            return mp.X >= p.X and mp.X <= p.X + s.X and mp.Y >= p.Y and mp.Y <= p.Y + s.Y
-        end
-        if over(CloseBtn) or over(MiscBtn) then return end
-        mDrag = true; mStart = input.Position; mStartPos = MainFrame.Position
-    end
-end)
-TitleBar.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        mDrag = false
-    end
-end)
-UserInputService.InputChanged:Connect(function(input)
-    if mDrag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local d = input.Position - mStart
-        MainFrame.Position = UDim2.new(mStartPos.X.Scale, mStartPos.X.Offset + d.X, mStartPos.Y.Scale, mStartPos.Y.Offset + d.Y)
-    end
-end)
-
-local miDrag, miStart, miStartPos = false, nil, nil
-MiscTitleBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        local mp = input.Position
-        local p, s = MiscClose.AbsolutePosition, MiscClose.AbsoluteSize
-        if mp.X >= p.X and mp.X <= p.X + s.X and mp.Y >= p.Y and mp.Y <= p.Y + s.Y then return end
-        miDrag = true; miStart = input.Position; miStartPos = MiscFrame.Position
-    end
-end)
-MiscTitleBar.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        miDrag = false
-    end
-end)
-UserInputService.InputChanged:Connect(function(input)
-    if miDrag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local d = input.Position - miStart
-        MiscFrame.Position = UDim2.new(miStartPos.X.Scale, miStartPos.X.Offset + d.X, miStartPos.Y.Scale, miStartPos.Y.Offset + d.Y)
-    end
-end)
-
-MiscBtn.MouseButton1Click:Connect(function()
-    MiscFrame.Visible = not MiscFrame.Visible
-end)
-MiscClose.MouseButton1Click:Connect(function() MiscFrame.Visible = false end)
-CloseBtn.MouseButton1Click:Connect(function()
-    MainFrame.Visible = false; MiscFrame.Visible = false; DockBtn.Visible = true
-end)
-
--- ESP
-local ESPFolder = Instance.new("Folder")
-ESPFolder.Name = "XyqwPiggyESP"
-ESPFolder.Parent = CoreGui
-
-local ESP = { Items = {}, Monster = {}, Players = {}, Tools = {} }
-
-local function EnableItemESP()
-    for _, item in ipairs(GetListItems()) do
-        if not ESP.Items[item.part] then
-            local hl = Instance.new("Highlight")
-            hl.FillColor = THEME.ITEM
-            hl.FillTransparency = 0.7
-            hl.OutlineColor = THEME.ITEM
-            hl.OutlineTransparency = 0
-            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-            hl.Adornee = item.part
-            hl.Parent = ESPFolder
-            ESP.Items[item.part] = hl
-        end
-    end
-end
-
-local function DisableItemESP()
-    for _, hl in pairs(ESP.Items) do pcall(function() hl:Destroy() end) end
-    ESP.Items = {}
-end
-
-local function EnableMonsterESP()
-    task.spawn(function()
-        while State.ESP.Monster do
-            local char = LP.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                for _, obj in ipairs(workspace:GetDescendants()) do
-                    if obj:IsA("Model") then
-                        local hum = obj:FindFirstChildOfClass("Humanoid")
-                        if hum and hum.Health > 0 and not Players:GetPlayerFromCharacter(obj) then
-                            local oHrp = obj:FindFirstChild("HumanoidRootPart") or obj.PrimaryPart
-                            if oHrp then
-                                local dist = (oHrp.Position - hrp.Position).Magnitude
-                                if dist < 200 then
-                                    if not ESP.Monster[obj] then
-                                        local hl = Instance.new("Highlight")
-                                        hl.FillColor = Color3.fromRGB(255, 0, 0)
-                                        hl.FillTransparency = 0.5
-                                        hl.OutlineColor = Color3.fromRGB(255, 0, 0)
-                                        hl.OutlineTransparency = 0
-                                        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                                        hl.Adornee = obj
-                                        hl.Parent = ESPFolder
-                                        ESP.Monster[obj] = hl
-                                    end
-                                else
-                                    if ESP.Monster[obj] then
-                                        pcall(function() ESP.Monster[obj]:Destroy() end)
-                                        ESP.Monster[obj] = nil
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-            task.wait(1)
-        end
-        for _, hl in pairs(ESP.Monster) do pcall(function() hl:Destroy() end) end
-        ESP.Monster = {}
+    State.lastScrollMisc = tick()
+    State.miscScrolling = true
+    task.delay(0.4, function()
+        State.miscScrolling = false
     end)
-end
-
-local function DisableMonsterESP()
-    State.ESP.Monster = false
-    for _, hl in pairs(ESP.Monster) do pcall(function() hl:Destroy() end) end
-    ESP.Monster = {}
-end
-
-local function EnablePlayerESP()
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LP and plr.Character then
-            local hum = plr.Character:FindFirstChildOfClass("Humanoid")
-            if hum and hum.Health > 0 and not ESP.Players[plr] then
-                local hl = Instance.new("Highlight")
-                hl.FillColor = Color3.fromRGB(0, 255, 0)
-                hl.FillTransparency = 0.6
-                hl.OutlineColor = Color3.fromRGB(0, 255, 0)
-                hl.OutlineTransparency = 0
-                hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                hl.Adornee = plr.Character
-                hl.Parent = ESPFolder
-                ESP.Players[plr] = hl
-            end
-        end
-    end
-end
-
-local function DisablePlayerESP()
-    for _, hl in pairs(ESP.Players) do pcall(function() hl:Destroy() end) end
-    ESP.Players = {}
-end
-
-task.spawn(function()
-    while true do
-        if State.ESP.Players then EnablePlayerESP() end
-        task.wait(2)
-    end
 end)
 
-local function EnableToolIndicator()
-    task.spawn(function()
-        while State.ToolIndicator do
-            local char = LP.Character
-            local tool = char and char:FindFirstChildOfClass("Tool")
-            if tool then
-                for _, item in ipairs(GetListItems()) do
-                    if not ESP.Tools[item.part] then
-                        local hl = Instance.new("Highlight")
-                        hl.FillColor = THEME.ITEM
-                        hl.FillTransparency = 0.6
-                        hl.OutlineColor = THEME.ITEM
-                        hl.OutlineTransparency = 0
-                        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                        hl.Adornee = item.part
-                        hl.Parent = ESPFolder
-                        ESP.Tools[item.part] = hl
-                    end
-                end
-            else
-                for _, hl in pairs(ESP.Tools) do pcall(function() hl:Destroy() end) end
-                ESP.Tools = {}
-            end
-            task.wait(1)
-        end
-        for _, hl in pairs(ESP.Tools) do pcall(function() hl:Destroy() end) end
-        ESP.Tools = {}
-    end)
-end
-
-local function EnableAntiTrap()
-    task.spawn(function()
-        while State.AntiTrap do
-            local char = LP.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            if hrp and hum and hum.Health > 0 then
-                for _, obj in ipairs(workspace:GetDescendants()) do
-                    if obj:IsA("BasePart") and obj.CanCollide then
-                        local n = obj.Name:lower()
-                        if n:find("trap") or n:find("lava") or n:find("spike")
-                        or n:find("kill") or n:find("damage") or n:find("bear") then
-                            if (obj.Position - hrp.Position).Magnitude < 6 then
-                                hrp.CFrame = hrp.CFrame + Vector3.new(0, 25, 0)
-                                Notify("Anti-Trap: Detected!", 1)
-                                break
-                            end
-                        end
-                    end
-                end
-            end
-            task.wait(0.2)
-        end
-    end)
-end
-
--- DELETE PIGGY
-local dPConn = nil
-local dPSaved = {}
-
-local function EnableDeletePiggy()
-    if dPConn then return end
-    State.DeletePiggy = true
-    dPSaved = {}
-
-    dPConn = RunService.Heartbeat:Connect(function()
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") then
-                local hum = obj:FindFirstChildOfClass("Humanoid")
-                if hum and not Players:GetPlayerFromCharacter(obj) and obj.Parent ~= nil then
-                    if not dPSaved[obj] then
-                        local savedParts = {}
-                        for _, part in ipairs(obj:GetDescendants()) do
-                            if part:IsA("BasePart") then
-                                savedParts[part] = {
-                                    cframe = part.CFrame,
-                                    anchored = part.Anchored,
-                                    canCollide = part.CanCollide,
-                                    transparency = part.Transparency,
-                                }
-                            end
-                        end
-                        dPSaved[obj] = {
-                            health = hum.Health,
-                            maxHealth = hum.MaxHealth,
-                            parent = obj.Parent,
-                            parts = savedParts,
-                        }
-                    end
-                    pcall(function() hum.Health = 0; hum.MaxHealth = 0 end)
-                    pcall(function() obj.Parent = nil end)
-                end
-            end
-        end
-    end)
-
-    Notify("Delete Piggy: ON", 2)
-end
-
-local function DisableDeletePiggy()
-    if not State.DeletePiggy then return end
-    State.DeletePiggy = false
-    if dPConn then dPConn:Disconnect(); dPConn = nil end
-
-    for obj, data in pairs(dPSaved) do
-        pcall(function()
-            for part, pd in pairs(data.parts) do
-                if part then
-                    part.CFrame = pd.cframe
-                    part.Anchored = pd.anchored
-                    part.CanCollide = pd.canCollide
-                    part.Transparency = pd.transparency
-                end
-            end
-            local hum = obj:FindFirstChildOfClass("Humanoid")
-            if hum then
-                hum.MaxHealth = data.maxHealth
-                hum.Health = data.health
-            end
-            if data.parent then obj.Parent = data.parent end
-        end)
-    end
-
-    dPSaved = {}
-    Notify("Delete Piggy: OFF (restored)", 2)
-end
-
--- TOGGLE
+-- ============================================================
+-- TOGGLE BUILDER
+-- ============================================================
 local function MakeToggle(name, getState, onToggle)
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1, -4, 0, 28)
@@ -906,10 +492,7 @@ local function MakeToggle(name, getState, onToggle)
     catcher.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
-            pressStart = tick()
-            pressPos = input.Position
-            moved = false
-            tracking = true
+            pressStart = tick(); pressPos = input.Position; moved = false; tracking = true
         end
     end)
 
@@ -917,8 +500,7 @@ local function MakeToggle(name, getState, onToggle)
         if tracking and pressPos and
         (input.UserInputType == Enum.UserInputType.MouseMovement
         or input.UserInputType == Enum.UserInputType.Touch) then
-            local d = (input.Position - pressPos).Magnitude
-            if d > 6 then moved = true end
+            if (input.Position - pressPos).Magnitude > 8 then moved = true end
         end
     end)
 
@@ -928,10 +510,11 @@ local function MakeToggle(name, getState, onToggle)
         or input.UserInputType == Enum.UserInputType.Touch then
             tracking = false
             local held = tick() - pressStart
-            if not moved and held < 0.5 and (tick() - lastScrollMisc) > 0.3 then
+            if not moved and held < 0.4 and (tick() - State.lastScrollMisc) > 0.4 and not State.miscScrolling then
                 local mp = input.Position
                 local cp, cs = catcher.AbsolutePosition, catcher.AbsoluteSize
-                if mp.X >= cp.X and mp.X <= cp.X + cs.X and mp.Y >= cp.Y and mp.Y <= cp.Y + cs.Y then
+                if mp.X >= cp.X and mp.X <= cp.X + cs.X
+                and mp.Y >= cp.Y and mp.Y <= cp.Y + cs.Y then
                     fire()
                 end
             end
@@ -940,33 +523,695 @@ local function MakeToggle(name, getState, onToggle)
     end)
 end
 
-MakeToggle("Delete Piggy (Visual)", function() return State.DeletePiggy end, function()
-    if State.DeletePiggy then DisableDeletePiggy() else EnableDeletePiggy() end
-end)
-MakeToggle("ESP Items", function() return State.ESP.Items end, function()
-    State.ESP.Items = not State.ESP.Items
-    if State.ESP.Items then EnableItemESP() else DisableItemESP() end
-end)
-MakeToggle("ESP Monster", function() return State.ESP.Monster end, function()
-    State.ESP.Monster = not State.ESP.Monster
-    if State.ESP.Monster then EnableMonsterESP() else DisableMonsterESP() end
-end)
-MakeToggle("ESP Players", function() return State.ESP.Players end, function()
-    State.ESP.Players = not State.ESP.Players
-    if State.ESP.Players then EnablePlayerESP() else DisablePlayerESP() end
-end)
-MakeToggle("Tool Usage", function() return State.ToolIndicator end, function()
-    State.ToolIndicator = not State.ToolIndicator
-    if State.ToolIndicator then EnableToolIndicator() end
-end)
-MakeToggle("Anti-Trap", function() return State.AntiTrap end, function()
-    State.AntiTrap = not State.AntiTrap
-    if State.AntiTrap then EnableAntiTrap() end
+MakeToggle("ESP Items", function() return State.ESPItems end, function() State.ESPItems = not State.ESPItems end)
+MakeToggle("ESP Monster", function() return State.ESPMonster end, function() State.ESPMonster = not State.ESPMonster end)
+MakeToggle("ESP Players", function() return State.ESPPlayers end, function() State.ESPPlayers = not State.ESPPlayers end)
+MakeToggle("Anti-Trap", function() return State.AntiTrap end, function() State.AntiTrap = not State.AntiTrap end)
+MakeToggle("Auto-AFK", function() return State.AutoAFK end, function() State.AutoAFK = not State.AutoAFK end)
+
+-- ============================================================
+-- AUTOFARM
+-- ============================================================
+local function IsPrivateServer()
+    local gf = workspace:FindFirstChild("GameFolder")
+    if gf then
+        local vipsv = gf:FindFirstChild("IsVIPServer")
+        if vipsv and vipsv:IsA("BoolValue") then
+            return vipsv.Value
+        end
+    end
+    return game.PrivateServerId ~= "" and game.PrivateServerOwnerId ~= 0
+end
+
+local function MakeFarmBtn(name, color, onClick)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -4, 0, 34)
+    btn.BackgroundColor3 = THEME.DARK
+    btn.TextColor3 = color
+    btn.Text = name
+    btn.TextScaled = true
+    btn.Font = Enum.Font.GothamBold
+    btn.BorderSizePixel = 2
+    btn.BorderColor3 = color
+    btn.Parent = MiscScroll
+    btn.AutoButtonColor = false
+    local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 6); bc.Parent = btn
+    AddStroke(btn, color, 2); AddTextStroke(btn)
+
+    local pressStart, pressPos, moved, tracking = 0, nil, false, false
+    btn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            pressStart = tick(); pressPos = input.Position; moved = false; tracking = true
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if tracking and pressPos and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            if (input.Position - pressPos).Magnitude > 8 then moved = true end
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if not tracking then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            tracking = false
+            local held = tick() - pressStart
+            if not moved and held < 0.4 and (tick() - State.lastScrollMisc) > 0.4 and not State.miscScrolling then
+                local mp = input.Position
+                local cp, cs = btn.AbsolutePosition, btn.AbsoluteSize
+                if mp.X >= cp.X and mp.X <= cp.X + cs.X and mp.Y >= cp.Y and mp.Y <= cp.Y + cs.Y then
+                    onClick()
+                end
+            end
+        end
+    end)
+end
+
+-- ============================================================
+-- AUTO FARM CONFIRM
+-- ============================================================
+local function ShowAutoFarmConfirm()
+    for _, obj in ipairs(ScreenGui:GetChildren()) do
+        if obj.Name == "AutoFarmConfirm" then obj:Destroy() end
+    end
+
+    local isPrivate = IsPrivateServer()
+
+    local confirmFrame = Instance.new("Frame")
+    confirmFrame.Name = "AutoFarmConfirm"
+    confirmFrame.Size = UDim2.new(0, 360, 0, 300)
+    confirmFrame.Position = UDim2.new(0.5, -180, 0.5, -150)
+    confirmFrame.BackgroundColor3 = THEME.BG
+    confirmFrame.BorderSizePixel = 3
+    confirmFrame.BorderColor3 = THEME.MAIN
+    confirmFrame.Active = true
+    confirmFrame.ZIndex = 100
+    confirmFrame.Parent = ScreenGui
+    local cfc = Instance.new("UICorner"); cfc.CornerRadius = UDim.new(0, 10); cfc.Parent = confirmFrame
+
+    local titleBar = Instance.new("Frame")
+    titleBar.Size = UDim2.new(1, 0, 0, 32)
+    titleBar.BackgroundColor3 = THEME.TITLE
+    titleBar.BorderSizePixel = 0
+    titleBar.ZIndex = 101
+    titleBar.Parent = confirmFrame
+    local tbc = Instance.new("UICorner"); tbc.CornerRadius = UDim.new(0, 10); tbc.Parent = titleBar
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, -10, 1, 0)
+    title.Position = UDim2.new(0, 8, 0, 0)
+    title.BackgroundTransparency = 1
+    title.Text = "XyqwPiggy | READ THIS!!"
+    title.TextColor3 = THEME.MAIN
+    title.TextScaled = true
+    title.Font = Enum.Font.GothamBold
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.ZIndex = 102
+    title.Parent = titleBar
+    AddTextStroke(title)
+
+    local warnText = Instance.new("TextLabel")
+    warnText.Size = UDim2.new(1, -20, 0, 60)
+    warnText.Position = UDim2.new(0, 10, 0, 42)
+    warnText.BackgroundTransparency = 1
+    warnText.Text = "AutoFarm works only on PRIVATE servers and on the Gallery map (AutoFarm selects it automatically)"
+    warnText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    warnText.TextScaled = true
+    warnText.Font = Enum.Font.GothamBold
+    warnText.TextWrapped = true
+    warnText.TextXAlignment = Enum.TextXAlignment.Center
+    warnText.ZIndex = 102
+    warnText.Parent = confirmFrame
+    AddTextStroke(warnText)
+
+    local serverStatus = Instance.new("TextLabel")
+    serverStatus.Size = UDim2.new(1, -20, 0, 50)
+    serverStatus.Position = UDim2.new(0, 10, 0, 110)
+    serverStatus.BackgroundTransparency = 1
+    if isPrivate then
+        serverStatus.Text = "You are currently on a PRIVATE server."
+        serverStatus.TextColor3 = Color3.fromRGB(0, 255, 100)
+    else
+        serverStatus.Text = "You are currently on a PUBLIC server, AutoFarm may not work!"
+        serverStatus.TextColor3 = Color3.fromRGB(255, 0, 0)
+    end
+    serverStatus.TextScaled = true
+    serverStatus.Font = Enum.Font.GothamBold
+    serverStatus.TextWrapped = true
+    serverStatus.TextXAlignment = Enum.TextXAlignment.Center
+    serverStatus.ZIndex = 102
+    serverStatus.Parent = confirmFrame
+    AddTextStroke(serverStatus)
+
+    local cancelBtn = Instance.new("TextButton")
+    cancelBtn.Size = UDim2.new(0.45, -10, 0, 48)
+    cancelBtn.Position = UDim2.new(0, 10, 1, -58)
+    cancelBtn.BackgroundColor3 = THEME.DARK
+    cancelBtn.TextColor3 = THEME.MAIN
+    cancelBtn.Text = "Cancel"
+    cancelBtn.TextScaled = true
+    cancelBtn.Font = Enum.Font.GothamBold
+    cancelBtn.BorderSizePixel = 2
+    cancelBtn.BorderColor3 = THEME.MAIN
+    cancelBtn.ZIndex = 102
+    cancelBtn.Parent = confirmFrame
+    cancelBtn.AutoButtonColor = false
+    local cbc = Instance.new("UICorner"); cbc.CornerRadius = UDim.new(0, 6); cbc.Parent = cancelBtn
+    AddStroke(cancelBtn, THEME.MAIN, 2); AddTextStroke(cancelBtn)
+
+    local runBtn = Instance.new("TextButton")
+    runBtn.Size = UDim2.new(0.45, -10, 0, 48)
+    runBtn.Position = UDim2.new(0.5, 0, 1, -58)
+    runBtn.BackgroundColor3 = THEME.DARK
+    runBtn.TextColor3 = THEME.SUB
+    runBtn.Text = "Run AutoFarm (5)"
+    runBtn.TextScaled = true
+    runBtn.Font = Enum.Font.GothamBold
+    runBtn.BorderSizePixel = 2
+    runBtn.BorderColor3 = THEME.SUB
+    runBtn.ZIndex = 102
+    runBtn.Parent = confirmFrame
+    runBtn.AutoButtonColor = false
+    local rbc = Instance.new("UICorner"); rbc.CornerRadius = UDim.new(0, 6); rbc.Parent = runBtn
+    AddStroke(runBtn, THEME.SUB, 2); AddTextStroke(runBtn)
+
+    local canRun = false
+
+    task.spawn(function()
+        for i = 5, 1, -1 do
+            runBtn.Text = "Run AutoFarm (" .. i .. ")"
+            task.wait(1)
+            if not confirmFrame.Parent then return end
+        end
+        canRun = true
+        runBtn.Text = "Run AutoFarm"
+        runBtn.TextColor3 = THEME.OK
+        runBtn.BorderColor3 = THEME.OK
+        AddStroke(runBtn, THEME.OK, 2)
+    end)
+
+    cancelBtn.MouseButton1Click:Connect(function()
+        confirmFrame:Destroy()
+        Notify("AutoFarm cancelled", 2)
+    end)
+
+    runBtn.MouseButton1Click:Connect(function()
+        if not canRun then
+            Notify("Please wait!", 2)
+            return
+        end
+        confirmFrame:Destroy()
+        State.FarmNeedStop = false
+        State.FarmCurrentCycle = 0
+        State.FarmItemsCollected = 0
+        if _G.__FarmMainLoop then
+            task.spawn(_G.__FarmMainLoop)
+        end
+    end)
+end
+
+-- ============================================================
+-- AUTOFARM LOGIC
+-- ============================================================
+local FarmRemotes = { JoinGame = nil, VIPCommandEvent = nil }
+
+local function GetFarmRemote(name)
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    if remotes then
+        local r = remotes:FindFirstChild(name)
+        if r then return r end
+    end
+    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+        if obj.Name == name and (obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction")) then
+            return obj
+        end
+    end
+    return nil
+end
+
+local function RefreshFarmRemotes()
+    FarmRemotes.JoinGame = GetFarmRemote("JoinGame")
+    FarmRemotes.VIPCommandEvent = GetFarmRemote("VIPCommandEvent")
+end
+
+local function GetGamePhase()
+    local gf = workspace:FindFirstChild("GameFolder")
+    if not gf then return nil end
+    local phase = gf:FindFirstChild("Phase")
+    return phase and phase.Value or nil
+end
+
+local function SafeFireRemote(obj, ...)
+    if not obj then return false end
+    return pcall(function()
+        if obj:IsA("RemoteEvent") then obj:FireServer(...)
+        elseif obj:IsA("RemoteFunction") then obj:InvokeServer(...) end
+    end)
+end
+
+local function SafeClickBtn(btn)
+    if not btn then return false end
+    if firesignal then
+        local ok = pcall(function() firesignal(btn.MouseButton1Click) end)
+        if ok then return true end
+    end
+    return pcall(function()
+        if getconnections then
+            for _, conn in pairs(getconnections(btn.MouseButton1Click)) do
+                pcall(function() conn:Fire() end)
+            end
+        end
+    end)
+end
+
+local function FarmPressPlay()
+    if FarmRemotes.JoinGame then
+        if SafeFireRemote(FarmRemotes.JoinGame, true) then
+            task.wait(0.4)
+            return true
+        end
+    end
+    local pg = LP:FindFirstChild("PlayerGui")
+    if pg then
+        local mm = pg:FindFirstChild("MainMenu")
+        if mm then
+            local ms = mm:FindFirstChild("MainScreen")
+            if ms then
+                local cf = ms:FindFirstChild("CenterFrame")
+                if cf then
+                    local cb = cf:FindFirstChild("CenterButtons")
+                    if cb then
+                        local playBtn = cb:FindFirstChild("Play")
+                        if playBtn then
+                            SafeClickBtn(playBtn)
+                            return true
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return false
+end
+
+local function FarmPressSkip()
+    local pg = LP:FindFirstChild("PlayerGui")
+    if not pg then return false end
+    local mm = pg:FindFirstChild("MainMenu")
+    if not mm then return false end
+    local skipBtn = mm:FindFirstChild("Skip")
+    if skipBtn then
+        SafeClickBtn(skipBtn)
+        return true
+    end
+    return false
+end
+
+local function FarmSetupGallery()
+    if not FarmRemotes.VIPCommandEvent then RefreshFarmRemotes() end
+    if not FarmRemotes.VIPCommandEvent then return false end
+    SafeFireRemote(FarmRemotes.VIPCommandEvent, "SetMap", State.FarmConfig.MAP)
+    task.wait(0.3)
+    SafeFireRemote(FarmRemotes.VIPCommandEvent, "SetMode", State.FarmConfig.MODE)
+    task.wait(0.3)
+    if State.FarmConfig.SKIP_TIMER then
+        SafeFireRemote(FarmRemotes.VIPCommandEvent, "SkipTimer", true)
+        task.wait(0.2)
+        SafeFireRemote(FarmRemotes.VIPCommandEvent, "SkipTimer", true)
+    end
+    return true
+end
+
+local function FarmCollectOnce()
+    local collected = 0
+    local char = LP.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return 0 end
+    local itemFolder = workspace:FindFirstChild("ItemFolder")
+    if not itemFolder then return 0 end
+    for _, item in ipairs(itemFolder:GetChildren()) do
+        if State.FarmNeedStop then break end
+        if item:IsA("BasePart") then
+            local cd = item:FindFirstChildOfClass("ClickDetector")
+            if cd then
+                pcall(function() hrp.CFrame = CFrame.new(item.Position + Vector3.new(0, 2, 0)) end)
+                task.wait(State.FarmConfig.COLLECT_DELAY)
+                pcall(function()
+                    if fireclickdetector then fireclickdetector(cd) end
+                end)
+                collected = collected + 1
+                State.FarmItemsCollected = State.FarmItemsCollected + 1
+                State.FarmLastActivity = tick()
+            end
+        end
+    end
+    return collected
+end
+
+local function FarmCollectLoop()
+    local startTime = tick()
+    while not State.FarmNeedStop do
+        local phase = GetGamePhase()
+        if phase ~= "GameInProgress" then break end
+        if tick() - startTime > State.FarmConfig.MAX_GAME_TIME then break end
+        FarmCollectOnce()
+        task.wait(State.FarmConfig.RESCAN_DELAY)
+    end
+end
+
+local function FarmMainLoop()
+    State.FarmRunning = true
+    Notify("AutoFarm started!", 3)
+    RefreshFarmRemotes()
+
+    while State.FarmConfig.AUTO_LOOP and not State.FarmNeedStop do
+        State.FarmCurrentCycle = State.FarmCurrentCycle + 1
+        State.FarmItemsCollected = 0
+        State.FarmLastActivity = tick()
+
+        local phase = GetGamePhase()
+        if not phase or phase == "GameInProgress" then
+            local t = tick()
+            while tick() - t < 200 do
+                if State.FarmNeedStop then break end
+                if GetGamePhase() == "Intermission" then break end
+                task.wait(0.5)
+            end
+        end
+
+        if State.FarmNeedStop then break end
+
+        if State.FarmConfig.AUTO_PLAY then
+            local p = GetGamePhase()
+            if p == nil or p == "Intermission" then
+                FarmPressPlay()
+                task.wait(1)
+            end
+        end
+
+        FarmSetupGallery()
+        task.wait(1)
+
+        local t2 = tick()
+        while tick() - t2 < 90 do
+            if State.FarmNeedStop then break end
+            local p = GetGamePhase()
+            if p == "GameInProgress" then break end
+            if p == "Map Voting" or p == "Piggy Voting" then
+                if not _G.__lastSkipVote or tick() - _G.__lastSkipVote > 5 then
+                    _G.__lastSkipVote = tick()
+                    SafeFireRemote(FarmRemotes.VIPCommandEvent, "SkipTimer", true)
+                end
+            end
+            task.wait(0.5)
+        end
+
+        if State.FarmNeedStop then break end
+
+        if GetGamePhase() == "GameInProgress" then
+            task.wait(2)
+            if State.FarmConfig.AUTO_COLLECT then
+                FarmCollectLoop()
+            end
+            if State.FarmConfig.AUTO_SKIP and not State.FarmNeedStop then
+                task.wait(2)
+                FarmPressSkip()
+                task.wait(3)
+                FarmPressSkip()
+            end
+        end
+
+        task.wait(3)
+    end
+
+    State.FarmRunning = false
+    Notify("AutoFarm stopped", 3)
+end
+
+_G.__FarmMainLoop = FarmMainLoop
+
+MakeFarmBtn("🤖 Run AutoFarm", Color3.fromRGB(0, 200, 255), function()
+    ShowAutoFarmConfirm()
 end)
 
+MakeFarmBtn("⏹ Stop AutoFarm", Color3.fromRGB(255, 0, 0), function()
+    State.FarmNeedStop = true
+    State.FarmRunning = false
+    Notify("AutoFarm stopped", 2)
+end)
+
+-- ============================================================
+-- ⭐ SkinChanger — LOADSTRING с GitHub
+-- ============================================================
+SkinBtn.MouseButton1Click:Connect(function()
+    -- Скрываем XyqwPiggy
+    MainFrame.Visible = false
+    MiscFrame.Visible = false
+    DockBtn.Visible = true
+    
+    Notify("Loading SkinChanger...", 3)
+    
+    local ok, err = pcall(function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/Xyqwerq/XyqwSkinChanger-Piggy/main/main.lua"))()
+    end)
+    
+    if not ok then
+        Notify("SkinChanger failed: " .. tostring(err), 4)
+    else
+        Notify("SkinChanger loaded!", 2)
+    end
+end)
+
+-- ============================================================
+-- DRAG MAIN
+-- ============================================================
+local mDrag, mStart, mStartPos = false, nil, nil
+TitleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        local mp = input.Position
+        local function over(b)
+            local p, s = b.AbsolutePosition, b.AbsoluteSize
+            return mp.X >= p.X and mp.X <= p.X + s.X and mp.Y >= p.Y and mp.Y <= p.Y + s.Y
+        end
+        if over(CloseBtn) or over(MiscBtn) or over(SkinBtn) then return end
+        mDrag = true; mStart = input.Position; mStartPos = MainFrame.Position
+    end
+end)
+TitleBar.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        mDrag = false
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if mDrag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local d = input.Position - mStart
+        MainFrame.Position = UDim2.new(mStartPos.X.Scale, mStartPos.X.Offset + d.X, mStartPos.Y.Scale, mStartPos.Y.Offset + d.Y)
+    end
+end)
+
+CloseBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+    MiscFrame.Visible = false
+    DockBtn.Visible = true
+end)
+
+MiscBtn.MouseButton1Click:Connect(function()
+    MiscFrame.Visible = not MiscFrame.Visible
+end)
+MiscClose.MouseButton1Click:Connect(function()
+    MiscFrame.Visible = false
+end)
+
+-- DOCK drag
+local dockDrag, dockStart, dockStartPos, dockMoved = false, nil, nil, false
+DockBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dockDrag = true; dockMoved = false
+        dockStart = input.Position; dockStartPos = DockBtn.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dockDrag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local d = input.Position - dockStart
+        if math.abs(d.X) > 5 or math.abs(d.Y) > 5 then dockMoved = true end
+        if dockMoved then
+            DockBtn.Position = UDim2.new(dockStartPos.X.Scale, dockStartPos.X.Offset + d.X, dockStartPos.Y.Scale, dockStartPos.Y.Offset + d.Y)
+        end
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and dockDrag then
+        if not dockMoved then
+            MainFrame.Visible = true
+            DockBtn.Visible = false
+        end
+        dockDrag = false
+    end
+end)
+
+-- AUTO-REFRESH BALANCE
+task.spawn(function()
+    while true do
+        task.wait(3)
+        if MainFrame.Parent then
+            BalanceLabel.Text = "Piggy Coins: " .. GetPiggyCoins()
+        end
+    end
+end)
+
+print("[XyqwPiggy v" .. VERSION .. "] Loaded!")
+print("[XyqwPiggy v" .. VERSION .. "] Game: " .. CURRENT_GAME.name)
+print("[XyqwPiggy v" .. VERSION .. "] SkinChanger через loadstring")
+print("[XyqwPiggy v" .. VERSION .. "] AutoFarm в Misc")
+Notify("XyqwPiggy v" .. VERSION .. " loaded!", 3)
+-- ============================================================
+-- ESP FOLDER
+-- ============================================================
+local ESPFolder = Instance.new("Folder")
+ESPFolder.Name = "XyqwPiggyESP"
+ESPFolder.Parent = CoreGui
+
+local ESP = { Items = {}, Monster = {}, Players = {}, Tools = {} }
+
+-- ============================================================
+-- GET ITEM NAME
+-- ============================================================
+local MESH_NAMES = {
+    ["rbxassetid://725833400"]                    = "Hammer",
+    ["rbxassetid://456878024"]                    = "Key",
+    ["rbxassetid://524706126"]                    = "Gear",
+    ["http://www.roblox.com/asset/?id=16884681"]  = "Tool",
+    ["http://www.roblox.com/asset/?id=16198309"]  = "Plank",
+    ["http://www.roblox.com/asset/?id=72012879"]  = "Battery",
+    ["rbxassetid://6714051581"]                   = "Note",
+    ["http://www.roblox.com/asset/?id=60791940"]  = "Gear",
+}
+
+local function GetKeyNameByColor(c)
+    local h, s, v = Color3.toHSV(c)
+    if s < 0.15 then return "White Key" end
+    local hd = h * 360
+    if hd < 15 or hd >= 345 then return "Red Key" end
+    if hd < 45 then return "Orange Key" end
+    if hd < 70 then return "Yellow Key" end
+    if hd < 160 then return "Green Key" end
+    if hd < 200 then return "Cyan Key" end
+    if hd < 260 then return "Blue Key" end
+    if hd < 290 then return "Purple Key" end
+    if hd < 345 then return "Pink Key" end
+    return "Key"
+end
+
+local function GetItemName(item)
+    local part = item.part
+    if not part then return "Unknown" end
+    local n = part.Name
+    if n and n ~= "" and not n:match("^%-?%d+$") then
+        return n
+    end
+    local mesh = part:FindFirstChildOfClass("SpecialMesh")
+    local meshId = mesh and mesh.MeshId or nil
+    if meshId == "rbxassetid://524706126" then return "Gear" end
+    if meshId == "rbxassetid://725833400" then return "Hammer" end
+    if meshId == "http://www.roblox.com/asset/?id=16198309" then return "Plank" end
+    if meshId == "http://www.roblox.com/asset/?id=72012879" then return "Battery" end
+    if meshId == "http://www.roblox.com/asset/?id=16884681" then return "Wrench" end
+    if meshId == "rbxassetid://6714051581" then return "Note" end
+    if meshId == "rbxassetid://456878024" then
+        local pe = part:FindFirstChildOfClass("ParticleEmitter")
+        if pe and pe.Color and pe.Color.Keypoints and #pe.Color.Keypoints > 0 then
+            return GetKeyNameByColor(pe.Color.Keypoints[1].Value)
+        end
+        return "Key"
+    end
+    return "Name Encrypted"
+end
+
+-- ============================================================
+-- IS DOOR / IS REAL ITEM
+-- ============================================================
+local MENU_NAMES = {
+    MenuCameras = true, MainMenuForest = true, MainMenuScreen = true,
+    ItemsScreen = true, ItemsFocus = true, ItemsCamera = true,
+    MenuPositions = true, MenuStorage = true, AbilityMenuStorage = true,
+}
+local function IsInMenu(part)
+    local c = part
+    local depth = 0
+    while c and depth < 8 do
+        if MENU_NAMES[c.Name] then return true end
+        c = c.Parent
+        depth = depth + 1
+    end
+    return false
+end
+
+local function IsDoor(part)
+    for _, ch in ipairs(part:GetChildren()) do
+        if ch:IsA("Script") and ch.Name:match("^%-?%d+$") then return true end
+    end
+    return false
+end
+
+local function IsRealItem(part)
+    if IsDoor(part) then return false end
+    if part:FindFirstChildOfClass("ParticleEmitter") then return true end
+    for _, ch in ipairs(part:GetChildren()) do
+        if ch:IsA("Script") and (ch.Name == "ItemPickupScript" or ch.Name == "NewItemPickupScript") then
+            return true
+        end
+    end
+    for _, ch in ipairs(part:GetChildren()) do
+        if ch:IsA("RemoteEvent") and ch.Name == "ClickEvent" then return true end
+    end
+    return false
+end
+
+local function IsAlreadyPickedUp(part)
+    if part.Transparency >= 1 then return true end
+    local pe = part:FindFirstChildOfClass("ParticleEmitter")
+    if pe and not pe.Enabled then return true end
+    local cd = part:FindFirstChildOfClass("ClickDetector")
+    if cd and cd.MaxActivationDistance <= 0 then return true end
+    return false
+end
+
+local function GetStableKey(part)
+    local mesh = part:FindFirstChildOfClass("SpecialMesh")
+    local meshId = mesh and mesh.MeshId or ""
+    local p = part.Position
+    local x = math.floor(p.X * 10 + 0.5) / 10
+    local y = math.floor(p.Y * 10 + 0.5) / 10
+    local z = math.floor(p.Z * 10 + 0.5) / 10
+    return string.format("%s_%.1f_%.1f_%.1f", meshId, x, y, z)
+end
+
+local function GetListItems()
+    local items = {}
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("ClickDetector") then
+            local part = obj.Parent
+            if part and part:IsA("BasePart") and not IsInMenu(part) then
+                if IsRealItem(part) and not IsAlreadyPickedUp(part) then
+                    table.insert(items, {
+                        part = part, detector = obj,
+                        key = GetStableKey(part), pos = part.Position,
+                    })
+                end
+            end
+        end
+    end
+    table.sort(items, function(a, b)
+        if math.abs(a.pos.X - b.pos.X) > 0.5 then return a.pos.X < b.pos.X end
+        if math.abs(a.pos.Z - b.pos.Z) > 0.5 then return a.pos.Z < b.pos.Z end
+        return a.pos.Y < b.pos.Y
+    end)
+    return items
+end
+
+-- ============================================================
 -- 3D VIEW
-local currentItems = {}
+-- ============================================================
 local spinningModels = {}
+local currentItems = {}
 local scanInProgress = false
 
 local function Create3DView(part, vpf)
@@ -976,7 +1221,6 @@ local function Create3DView(part, vpf)
         local model = Instance.new("Model")
         model.Parent = world
         local mp = part:Clone()
-
         for _, ch in ipairs(mp:GetChildren()) do
             if ch:IsA("Script") or ch:IsA("LocalScript")
             or ch:IsA("ClickDetector") or ch:IsA("ParticleEmitter")
@@ -989,7 +1233,6 @@ local function Create3DView(part, vpf)
                 ch:Destroy()
             end
         end
-
         if mp:IsA("BasePart") then
             mp.Anchored = true
             mp.CanCollide = false
@@ -999,174 +1242,73 @@ local function Create3DView(part, vpf)
             mp.CFrame = CFrame.new(0, 0, 0)
         end
         mp.Parent = model
-
         local extents = model:GetExtentsSize()
         local maxE = math.max(extents.X, extents.Y, extents.Z)
         if maxE > 0.001 then
             model:ScaleTo(3)
-        else
-            local mesh = mp:FindFirstChildOfClass("SpecialMesh")
-            if mesh then
-                local sz = mp.Size
-                local mE = math.max(math.abs(sz.X * mesh.Scale.X), math.abs(sz.Y * mesh.Scale.Y), math.abs(sz.Z * mesh.Scale.Z))
-                if mE > 0.001 then
-                    local k = 3.0 / mE
-                    mesh.Scale = Vector3.new(mesh.Scale.X * k, mesh.Scale.Y * k, mesh.Scale.Z * k)
-                end
-            end
         end
-
         if mp:IsA("BasePart") then
             mp.CFrame = CFrame.new(0, 0, 0)
         end
-
         local cam = Instance.new("Camera")
         cam.FieldOfView = 40
         cam.CFrame = CFrame.new(Vector3.new(4, 3, 4), Vector3.new(0, 0, 0))
         cam.Parent = vpf
         vpf.CurrentCamera = cam
-
         table.insert(spinningModels, mp)
     end)
 end
 
--- HELPERS
-local function FindKeyInBackpack()
-    local char = LP.Character
-    if not char then return nil end
-    local tool = char:FindFirstChildOfClass("Tool")
-    if tool and tool.Name:lower():find("key") then return tool end
-    local bp = LP:FindFirstChild("Backpack")
-    if bp then
-        for _, item in ipairs(bp:GetChildren()) do
-            if item:IsA("Tool") and item.Name:lower():find("key") then
-                return item
-            end
-        end
-    end
-    return nil
-end
-
-local function EquipTool(tool)
-    local char = LP.Character
-    if not char then return false end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum then return false end
-    pcall(function() hum:EquipTool(tool) end)
-    task.wait(0.2)
-    return true
-end
-
+-- ============================================================
 -- TAKE ITEM
+-- ============================================================
 local function TakeItem(item)
-    if State.Picking then return end
-    State.Picking = true
-
     local char = LP.Character
-    if not char then State.Picking = false; return end
+    if not char then return end
     local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then State.Picking = false; return end
-
-    -- ⭐ Берём имя из item.name (правильное) или вычисляем
-    local itemName = item.name or GetItemName(item)
-
+    if not hrp then return end
     local saved = hrp.CFrame
-    local isSafe = item.isSafe
-
-    if isSafe then
-        local key = FindKeyInBackpack()
-        if not key then
-            Notify("Ключ для сейфа не найден!", 3)
-            State.Picking = false
-            return
-        end
-        EquipTool(key)
-    end
-
     pcall(function() item.detector.MaxActivationDistance = math.huge end)
     hrp.CFrame = CFrame.new(item.part.Position + Vector3.new(0, 3, 0))
-
-    local maxTime = isSafe and 7 or 5
-    local startTime = tick()
-
     task.wait(0.3)
     pcall(function()
         if fireclickdetector then fireclickdetector(item.detector) end
     end)
-
-    local picked = false
-    while tick() - startTime < maxTime do
-        local elapsed = tick() - startTime
-        ShowProgress("Подбираю: " .. itemName, elapsed, maxTime, THEME.WARN)
-
-        if not item.part.Parent then picked = true break end
-        local pe = item.part:FindFirstChildOfClass("ParticleEmitter")
-        if pe and not pe.Enabled and not isSafe then picked = true break end
-
-        if math.floor(elapsed * 2) % 2 == 0 then
-            pcall(function() fireclickdetector(item.detector) end)
-        end
-
-        task.wait(0.2)
-    end
-
-    if not picked then
-        if not item.part.Parent then picked = true end
-        local pe = item.part:FindFirstChildOfClass("ParticleEmitter")
-        if pe and not pe.Enabled and not isSafe then picked = true end
-    end
-
+    task.wait(0.25)
     hrp.CFrame = saved
-
-    if picked then
-        ShowProgress("OK Подобрал: " .. itemName, maxTime, maxTime, THEME.OK)
-        Notify("Took: " .. itemName, 2)
-    else
-        ShowProgress("X Не подобралось: " .. itemName, maxTime, maxTime, THEME.OFF)
-        Notify("Не подобралось за " .. maxTime .. " сек — ТП обратно", 3)
-    end
-
-    task.wait(0.5)
-    HideProgress()
-
-    task.delay(0.3, function()
-        if not scanInProgress then RefreshItemList() end
+    Notify("Took: " .. GetItemName(item), 2)
+    task.delay(0.5, function()
+        if not scanInProgress then
+            _G.__RefreshItemList and _G.__RefreshItemList()
+        end
     end)
-
-    State.Picking = false
 end
--- REFRESH
-function RefreshItemList()
+
+-- ============================================================
+-- REFRESH LIST
+-- ============================================================
+function _G.__RefreshItemList()
     if scanInProgress then return end
     scanInProgress = true
-
     local savedScroll = ItemScroll.CanvasPosition
-
     local existingRows = {}
     for _, ch in ipairs(ItemScroll:GetChildren()) do
         if ch:IsA("TextButton") and ch:GetAttribute("ItemKey") then
             existingRows[ch:GetAttribute("ItemKey")] = ch
         end
     end
-
     currentItems = GetListItems()
-    StatusLabel.Text = "Items: " .. #currentItems
-
+    InfoLabel.Text = "Items: " .. #currentItems
     local newKeys = {}
-    for _, item in ipairs(currentItems) do
-        newKeys[item.key] = true
-    end
-
+    for _, item in ipairs(currentItems) do newKeys[item.key] = true end
     for key, row in pairs(existingRows) do
         if not newKeys[key] then
             row:Destroy()
             existingRows[key] = nil
         end
     end
-
     for i, item in ipairs(currentItems) do
         local row = existingRows[item.key]
-
         if not row then
             row = Instance.new("TextButton")
             row.Size = UDim2.new(1, -5, 0, 50)
@@ -1180,7 +1322,6 @@ function RefreshItemList()
             row:SetAttribute("ItemKey", item.key)
             local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(0, 6); rc.Parent = row
             AddStroke(row, THEME.STROKE, 1.5)
-
             local vpf = Instance.new("ViewportFrame")
             vpf.Size = UDim2.new(0, 44, 0, 44)
             vpf.Position = UDim2.new(0, 3, 0.5, -22)
@@ -1193,12 +1334,9 @@ function RefreshItemList()
             vpf.LightColor = Color3.fromRGB(255, 255, 255)
             local vc = Instance.new("UICorner"); vc.CornerRadius = UDim.new(0, 5); vc.Parent = vpf
             AddStroke(vpf)
-
             Create3DView(item.part, vpf)
-
             local itemName = GetItemName(item)
             row:SetAttribute("ItemName", itemName)
-
             local nl = Instance.new("TextLabel")
             nl.Name = "ItemNameLabel"
             nl.Size = UDim2.new(1, -60, 1, 0)
@@ -1212,7 +1350,6 @@ function RefreshItemList()
             nl.TextTruncate = Enum.TextTruncate.AtEnd
             nl.Parent = row
             AddTextStroke(nl)
-
             local catcher = Instance.new("TextButton")
             catcher.Size = UDim2.new(1, 0, 1, 0)
             catcher.BackgroundTransparency = 1
@@ -1220,45 +1357,34 @@ function RefreshItemList()
             catcher.ZIndex = 100
             catcher.AutoButtonColor = false
             catcher.Parent = row
-
             local pressStart, pressPos, moved, tracking = 0, nil, false, false
-
             catcher.InputBegan:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.MouseButton1
                 or input.UserInputType == Enum.UserInputType.Touch then
-                    pressStart = tick()
-                    pressPos = input.Position
-                    moved = false
-                    tracking = true
+                    pressStart = tick(); pressPos = input.Position; moved = false; tracking = true
                 end
             end)
-
             UserInputService.InputChanged:Connect(function(input)
                 if tracking and pressPos and
                 (input.UserInputType == Enum.UserInputType.MouseMovement
                 or input.UserInputType == Enum.UserInputType.Touch) then
-                    local d = (input.Position - pressPos).Magnitude
-                    if d > 6 then moved = true end
+                    if (input.Position - pressPos).Magnitude > 6 then moved = true end
                 end
             end)
-
             UserInputService.InputEnded:Connect(function(input)
                 if not tracking then return end
                 if input.UserInputType == Enum.UserInputType.MouseButton1
                 or input.UserInputType == Enum.UserInputType.Touch then
                     tracking = false
                     local held = tick() - pressStart
-                    if not moved and held < 0.5 and (tick() - lastScrollItem) > 0.3 then
+                    if not moved and held < 0.5 then
                         local mp = input.Position
                         local cp, cs = catcher.AbsolutePosition, catcher.AbsoluteSize
                         if mp.X >= cp.X and mp.X <= cp.X + cs.X
                         and mp.Y >= cp.Y and mp.Y <= cp.Y + cs.Y then
                             local curItem
                             for _, it in ipairs(currentItems) do
-                                if it.key == row:GetAttribute("ItemKey") then
-                                    curItem = it
-                                    break
-                                end
+                                if it.key == row:GetAttribute("ItemKey") then curItem = it break end
                             end
                             if curItem then TakeItem(curItem) end
                         end
@@ -1268,14 +1394,11 @@ function RefreshItemList()
             end)
         end
     end
-
-    task.defer(function()
-        ItemScroll.CanvasPosition = savedScroll
-    end)
-
+    task.defer(function() ItemScroll.CanvasPosition = savedScroll end)
     scanInProgress = false
 end
 
+-- Вращение 3D
 RunService.RenderStepped:Connect(function(dt)
     for _, model in ipairs(spinningModels) do
         if model and model.Parent then
@@ -1286,7 +1409,157 @@ RunService.RenderStepped:Connect(function(dt)
     end
 end)
 
+-- ============================================================
+-- ESP ITEMS
+-- ============================================================
+local function EnableItemESP()
+    for _, item in ipairs(GetListItems()) do
+        if not ESP.Items[item.part] then
+            local hl = Instance.new("Highlight")
+            hl.FillColor = THEME.MAIN
+            hl.FillTransparency = 0.7
+            hl.OutlineColor = THEME.MAIN
+            hl.OutlineTransparency = 0
+            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            hl.Adornee = item.part
+            hl.Parent = ESPFolder
+            ESP.Items[item.part] = hl
+        end
+    end
+end
+
+local function DisableItemESP()
+    for _, hl in pairs(ESP.Items) do pcall(function() hl:Destroy() end) end
+    ESP.Items = {}
+end
+
+-- ESP MONSTER
+local function EnableMonsterESP()
+    task.spawn(function()
+        while State.ESPMonster do
+            local char = LP.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj:IsA("Model") then
+                        local hum = obj:FindFirstChildOfClass("Humanoid")
+                        if hum and hum.Health > 0 and not Players:GetPlayerFromCharacter(obj) then
+                            local oHrp = obj:FindFirstChild("HumanoidRootPart") or obj.PrimaryPart
+                            if oHrp then
+                                local dist = (oHrp.Position - hrp.Position).Magnitude
+                                if dist < 200 then
+                                    if not ESP.Monster[obj] then
+                                        local hl = Instance.new("Highlight")
+                                        hl.FillColor = Color3.fromRGB(255, 0, 0)
+                                        hl.FillTransparency = 0.5
+                                        hl.OutlineColor = Color3.fromRGB(255, 0, 0)
+                                        hl.OutlineTransparency = 0
+                                        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                                        hl.Adornee = obj
+                                        hl.Parent = ESPFolder
+                                        ESP.Monster[obj] = hl
+                                    end
+                                else
+                                    if ESP.Monster[obj] then
+                                        pcall(function() ESP.Monster[obj]:Destroy() end)
+                                        ESP.Monster[obj] = nil
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            task.wait(1)
+        end
+        for _, hl in pairs(ESP.Monster) do pcall(function() hl:Destroy() end) end
+        ESP.Monster = {}
+    end)
+end
+
+local function DisableMonsterESP()
+    for _, hl in pairs(ESP.Monster) do pcall(function() hl:Destroy() end) end
+    ESP.Monster = {}
+end
+
+-- ESP PLAYERS
+local function EnablePlayerESP()
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LP and plr.Character then
+            local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 and not ESP.Players[plr] then
+                local hl = Instance.new("Highlight")
+                hl.FillColor = Color3.fromRGB(0, 255, 0)
+                hl.FillTransparency = 0.6
+                hl.OutlineColor = Color3.fromRGB(0, 255, 0)
+                hl.OutlineTransparency = 0
+                hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                hl.Adornee = plr.Character
+                hl.Parent = ESPFolder
+                ESP.Players[plr] = hl
+            end
+        end
+    end
+end
+
+local function DisablePlayerESP()
+    for _, hl in pairs(ESP.Players) do pcall(function() hl:Destroy() end) end
+    ESP.Players = {}
+end
+
+task.spawn(function()
+    while true do
+        if State.ESPPlayers then EnablePlayerESP() end
+        task.wait(2)
+    end
+end)
+
+-- ANTI-TRAP
+task.spawn(function()
+    while true do
+        if State.AntiTrap then
+            local char = LP.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hrp and hum and hum.Health > 0 then
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj:IsA("BasePart") and obj.CanCollide then
+                        local n = obj.Name:lower()
+                        if n:find("trap") or n:find("lava") or n:find("spike")
+                        or n:find("kill") or n:find("damage") or n:find("bear") then
+                            if (obj.Position - hrp.Position).Magnitude < 6 then
+                                hrp.CFrame = hrp.CFrame + Vector3.new(0, 25, 0)
+                                Notify("Anti-Trap!", 1)
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(0.2)
+    end
+end)
+
+-- AUTO-AFK
+task.spawn(function()
+    while true do
+        if State.AutoAFK then
+            pcall(function()
+                if VirtualUser and VirtualUser.Button1Down then
+                    VirtualUser:Button1Down(Vector2.new(0, 0))
+                elseif VirtualUser and VirtualUser.ClickButton1 then
+                    VirtualUser:ClickButton1(Vector2.new(0, 0))
+                end
+            end)
+        end
+        task.wait(60)
+    end)
+end)
+
+-- ============================================================
 -- SEARCH
+-- ============================================================
 SearchBar:GetPropertyChangedSignal("Text"):Connect(function()
     local q = (SearchBar.Text or ""):lower()
     for _, row in ipairs(ItemScroll:GetChildren()) do
@@ -1301,83 +1574,524 @@ SearchBar:GetPropertyChangedSignal("Text"):Connect(function()
     end
 end)
 
--- SCAN
+-- ============================================================
+-- BUTTON HANDLERS
+-- ============================================================
 ScanBtn.MouseButton1Click:Connect(function()
     Notify("Scanning...", 2)
     task.wait(0.3)
-    RefreshItemList()
+    _G.__RefreshItemList()
 end)
 
-task.spawn(function()
-    task.wait(1)
-    RefreshItemList()
+OpenGameBtn.MouseButton1Click:Connect(function()
+    local mainMenu = LP.PlayerGui:FindFirstChild("MainMenu")
+    if mainMenu then
+        local skf = mainMenu:FindFirstChild("SkinsFrame")
+        if skf then skf.Visible = true Notify("Меню открыто", 2) end
+    end
+end)
 
+RefreshBalBtn.MouseButton1Click:Connect(function()
+    BalanceLabel.Text = "Piggy Coins: " .. GetPiggyCoins()
+    Notify("Баланс обновлён", 1)
+end)
+
+ResetBtn.MouseButton1Click:Connect(function()
+    if _G.__FarmNeedStop then
+        State.FarmNeedStop = true
+        State.FarmRunning = false
+    end
+    Notify("Reset", 2)
+end)
+
+-- Toggles handlers
+task.spawn(function()
+    local lastESPItems = false
+    local lastESPMonster = false
     while true do
-        task.wait(1)
-        if not scanInProgress and not State.Picking then
-            RefreshItemList()
+        task.wait(0.5)
+        if State.ESPItems ~= lastESPItems then
+            lastESPItems = State.ESPItems
+            if State.ESPItems then EnableItemESP() else DisableItemESP() end
+        end
+        if State.ESPMonster ~= lastESPMonster then
+            lastESPMonster = State.ESPMonster
+            if State.ESPMonster then EnableMonsterESP() else DisableMonsterESP() end
         end
     end
 end)
 
--- RESIZE
-local RS = Instance.new("TextButton")
-RS.Size = UDim2.new(0, 14, 0, 14)
-RS.Position = UDim2.new(1, -16, 1, -16)
-RS.BackgroundColor3 = THEME.MAIN
-RS.Text = ""
-RS.BorderSizePixel = 0
-RS.Parent = MainFrame
-RS.AutoButtonColor = false
-RS.ZIndex = 10
-local RSC = Instance.new("UICorner"); RSC.CornerRadius = UDim.new(0, 4); RSC.Parent = RS
-
-local rsz, rStart, rStartSize = false, nil, nil
-RS.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        rsz = true; rStart = input.Position; rStartSize = MainFrame.Size
-    end
-end)
-UserInputService.InputChanged:Connect(function(input)
-    if rsz and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local d = input.Position - rStart
-        local nx = math.clamp(rStartSize.X.Offset + d.X, 250, 900)
-        local ny = math.clamp(rStartSize.Y.Offset + d.Y, 300, 1000)
-        MainFrame.Size = UDim2.new(0, nx, 0, ny)
-    end
-end)
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        rsz = false
+-- Авто-обновление списка
+task.spawn(function()
+    task.wait(1)
+    _G.__RefreshItemList()
+    while true do
+        task.wait(1)
+        if not scanInProgress then
+            _G.__RefreshItemList()
+        end
     end
 end)
 
--- CLEANUP
-game:BindToClose(function()
-    for obj, data in pairs(dPSaved) do
-        pcall(function()
-            for part, pd in pairs(data.parts) do
-                if part then
-                    part.CFrame = pd.cframe
-                    part.Anchored = pd.anchored
-                    part.CanCollide = pd.canCollide
-                    part.Transparency = pd.transparency
+-- ============================================================
+-- LOAD
+-- ============================================================
+print("[XyqwPiggy v" .. VERSION .. "] Part 2 loaded!")
+-- ============================================================
+-- AUTOFARM REMOTES
+-- ============================================================
+local FarmRemotes = { JoinGame = nil, VIPCommandEvent = nil }
+
+local function GetFarmRemote(name)
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    if remotes then
+        local r = remotes:FindFirstChild(name)
+        if r then return r end
+    end
+    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+        if obj.Name == name and (obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction")) then
+            return obj
+        end
+    end
+    return nil
+end
+
+local function RefreshFarmRemotes()
+    FarmRemotes.JoinGame = GetFarmRemote("JoinGame")
+    FarmRemotes.VIPCommandEvent = GetFarmRemote("VIPCommandEvent")
+end
+
+local function GetGamePhase()
+    local gf = workspace:FindFirstChild("GameFolder")
+    if not gf then return nil end
+    local phase = gf:FindFirstChild("Phase")
+    return phase and phase.Value or nil
+end
+
+local function SafeFireRemote(obj, ...)
+    if not obj then return false end
+    return pcall(function()
+        if obj:IsA("RemoteEvent") then obj:FireServer(...)
+        elseif obj:IsA("RemoteFunction") then obj:InvokeServer(...) end
+    end)
+end
+
+local function SafeClickBtn(btn)
+    if not btn then return false end
+    if firesignal then
+        local ok = pcall(function() firesignal(btn.MouseButton1Click) end)
+        if ok then return true end
+    end
+    return pcall(function()
+        if getconnections then
+            for _, conn in pairs(getconnections(btn.MouseButton1Click)) do
+                pcall(function() conn:Fire() end)
+            end
+        end
+    end)
+end
+
+local function FarmPressPlay()
+    if FarmRemotes.JoinGame then
+        if SafeFireRemote(FarmRemotes.JoinGame, true) then
+            task.wait(0.4)
+            return true
+        end
+    end
+    local pg = LP:FindFirstChild("PlayerGui")
+    if pg then
+        local mm = pg:FindFirstChild("MainMenu")
+        if mm then
+            local ms = mm:FindFirstChild("MainScreen")
+            if ms then
+                local cf = ms:FindFirstChild("CenterFrame")
+                if cf then
+                    local cb = cf:FindFirstChild("CenterButtons")
+                    if cb then
+                        local playBtn = cb:FindFirstChild("Play")
+                        if playBtn then
+                            SafeClickBtn(playBtn)
+                            return true
+                        end
+                    end
                 end
             end
-            local hum = obj:FindFirstChildOfClass("Humanoid")
-            if hum then
-                hum.MaxHealth = data.maxHealth
-                hum.Health = data.health
-            end
-            if data.parent then obj.Parent = data.parent end
-        end)
+        end
     end
-    if dPConn then dPConn:Disconnect() end
-    pcall(function() ESPFolder:Destroy() end)
+    return false
+end
+
+local function FarmPressSkip()
+    local pg = LP:FindFirstChild("PlayerGui")
+    if not pg then return false end
+    local mm = pg:FindFirstChild("MainMenu")
+    if not mm then return false end
+    local skipBtn = mm:FindFirstChild("Skip")
+    if skipBtn then
+        SafeClickBtn(skipBtn)
+        return true
+    end
+    return false
+end
+
+local function FarmSetupGallery()
+    if not FarmRemotes.VIPCommandEvent then RefreshFarmRemotes() end
+    if not FarmRemotes.VIPCommandEvent then return false end
+    SafeFireRemote(FarmRemotes.VIPCommandEvent, "SetMap", State.FarmConfig.MAP)
+    task.wait(0.3)
+    SafeFireRemote(FarmRemotes.VIPCommandEvent, "SetMode", State.FarmConfig.MODE)
+    task.wait(0.3)
+    if State.FarmConfig.SKIP_TIMER then
+        SafeFireRemote(FarmRemotes.VIPCommandEvent, "SkipTimer", true)
+        task.wait(0.2)
+        SafeFireRemote(FarmRemotes.VIPCommandEvent, "SkipTimer", true)
+    end
+    return true
+end
+
+local function FarmCollectOnce()
+    local collected = 0
+    local char = LP.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return 0 end
+    local itemFolder = workspace:FindFirstChild("ItemFolder")
+    if not itemFolder then return 0 end
+    for _, item in ipairs(itemFolder:GetChildren()) do
+        if State.FarmNeedStop then break end
+        if item:IsA("BasePart") then
+            local cd = item:FindFirstChildOfClass("ClickDetector")
+            if cd then
+                pcall(function() hrp.CFrame = CFrame.new(item.Position + Vector3.new(0, 2, 0)) end)
+                task.wait(State.FarmConfig.COLLECT_DELAY)
+                pcall(function()
+                    if fireclickdetector then fireclickdetector(cd) end
+                end)
+                collected = collected + 1
+                State.FarmItemsCollected = State.FarmItemsCollected + 1
+                State.FarmLastActivity = tick()
+            end
+        end
+    end
+    return collected
+end
+
+local function FarmCollectLoop()
+    local startTime = tick()
+    while not State.FarmNeedStop do
+        local phase = GetGamePhase()
+        if phase ~= "GameInProgress" then break end
+        if tick() - startTime > State.FarmConfig.MAX_GAME_TIME then break end
+        FarmCollectOnce()
+        task.wait(State.FarmConfig.RESCAN_DELAY)
+    end
+end
+
+local function FarmMainLoop()
+    State.FarmRunning = true
+    Notify("AutoFarm started!", 3)
+    RefreshFarmRemotes()
+
+    while State.FarmConfig.AUTO_LOOP and not State.FarmNeedStop do
+        State.FarmCurrentCycle = State.FarmCurrentCycle + 1
+        State.FarmItemsCollected = 0
+        State.FarmLastActivity = tick()
+
+        local phase = GetGamePhase()
+        if not phase or phase == "GameInProgress" then
+            local t = tick()
+            while tick() - t < 200 do
+                if State.FarmNeedStop then break end
+                if GetGamePhase() == "Intermission" then break end
+                task.wait(0.5)
+            end
+        end
+
+        if State.FarmNeedStop then break end
+
+        if State.FarmConfig.AUTO_PLAY then
+            local p = GetGamePhase()
+            if p == nil or p == "Intermission" then
+                FarmPressPlay()
+                task.wait(1)
+            end
+        end
+
+        FarmSetupGallery()
+        task.wait(1)
+
+        local t2 = tick()
+        while tick() - t2 < 90 do
+            if State.FarmNeedStop then break end
+            local p = GetGamePhase()
+            if p == "GameInProgress" then break end
+            if p == "Map Voting" or p == "Piggy Voting" then
+                if not _G.__lastSkipVote or tick() - _G.__lastSkipVote > 5 then
+                    _G.__lastSkipVote = tick()
+                    SafeFireRemote(FarmRemotes.VIPCommandEvent, "SkipTimer", true)
+                end
+            end
+            task.wait(0.5)
+        end
+
+        if State.FarmNeedStop then break end
+
+        if GetGamePhase() == "GameInProgress" then
+            task.wait(2)
+            if State.FarmConfig.AUTO_COLLECT then
+                FarmCollectLoop()
+            end
+            if State.FarmConfig.AUTO_SKIP and not State.FarmNeedStop then
+                task.wait(2)
+                FarmPressSkip()
+                task.wait(3)
+                FarmPressSkip()
+            end
+        end
+
+        task.wait(3)
+    end
+
+    State.FarmRunning = false
+    Notify("AutoFarm stopped", 3)
+end
+
+_G.__FarmMainLoop = FarmMainLoop
+
+-- ============================================================
+-- AUTOFARM CONFIRM WINDOW
+-- ============================================================
+local function IsPrivateServer()
+    local gf = workspace:FindFirstChild("GameFolder")
+    if gf then
+        local vipsv = gf:FindFirstChild("IsVIPServer")
+        if vipsv and vipsv:IsA("BoolValue") then
+            return vipsv.Value
+        end
+    end
+    return game.PrivateServerId ~= "" and game.PrivateServerOwnerId ~= 0
+end
+
+local function ShowAutoFarmConfirm()
+    for _, obj in ipairs(ScreenGui:GetChildren()) do
+        if obj.Name == "AutoFarmConfirm" then obj:Destroy() end
+    end
+
+    local isPrivate = IsPrivateServer()
+
+    local confirmFrame = Instance.new("Frame")
+    confirmFrame.Name = "AutoFarmConfirm"
+    confirmFrame.Size = UDim2.new(0, 360, 0, 300)
+    confirmFrame.Position = UDim2.new(0.5, -180, 0.5, -150)
+    confirmFrame.BackgroundColor3 = THEME.BG
+    confirmFrame.BorderSizePixel = 3
+    confirmFrame.BorderColor3 = THEME.MAIN
+    confirmFrame.Active = true
+    confirmFrame.ZIndex = 100
+    confirmFrame.Parent = ScreenGui
+    local cfc = Instance.new("UICorner"); cfc.CornerRadius = UDim.new(0, 10); cfc.Parent = confirmFrame
+
+    local titleBar = Instance.new("Frame")
+    titleBar.Size = UDim2.new(1, 0, 0, 32)
+    titleBar.BackgroundColor3 = THEME.TITLE
+    titleBar.BorderSizePixel = 0
+    titleBar.ZIndex = 101
+    titleBar.Parent = confirmFrame
+    local tbc = Instance.new("UICorner"); tbc.CornerRadius = UDim.new(0, 10); tbc.Parent = titleBar
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, -10, 1, 0)
+    title.Position = UDim2.new(0, 8, 0, 0)
+    title.BackgroundTransparency = 1
+    title.Text = "XyqwPiggy | READ THIS!!"
+    title.TextColor3 = THEME.MAIN
+    title.TextScaled = true
+    title.Font = Enum.Font.GothamBold
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.ZIndex = 102
+    title.Parent = titleBar
+    AddTextStroke(title)
+
+    local warnText = Instance.new("TextLabel")
+    warnText.Size = UDim2.new(1, -20, 0, 60)
+    warnText.Position = UDim2.new(0, 10, 0, 42)
+    warnText.BackgroundTransparency = 1
+    warnText.Text = "AutoFarm works only on PRIVATE servers and on the Gallery map (AutoFarm selects it automatically)"
+    warnText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    warnText.TextScaled = true
+    warnText.Font = Enum.Font.GothamBold
+    warnText.TextWrapped = true
+    warnText.TextXAlignment = Enum.TextXAlignment.Center
+    warnText.ZIndex = 102
+    warnText.Parent = confirmFrame
+    AddTextStroke(warnText)
+
+    local serverStatus = Instance.new("TextLabel")
+    serverStatus.Size = UDim2.new(1, -20, 0, 50)
+    serverStatus.Position = UDim2.new(0, 10, 0, 110)
+    serverStatus.BackgroundTransparency = 1
+    if isPrivate then
+        serverStatus.Text = "You are currently on a PRIVATE server."
+        serverStatus.TextColor3 = Color3.fromRGB(0, 255, 100)
+    else
+        serverStatus.Text = "You are currently on a PUBLIC server, AutoFarm may not work!"
+        serverStatus.TextColor3 = Color3.fromRGB(255, 0, 0)
+    end
+    serverStatus.TextScaled = true
+    serverStatus.Font = Enum.Font.GothamBold
+    serverStatus.TextWrapped = true
+    serverStatus.TextXAlignment = Enum.TextXAlignment.Center
+    serverStatus.ZIndex = 102
+    serverStatus.Parent = confirmFrame
+    AddTextStroke(serverStatus)
+
+    local cancelBtn = Instance.new("TextButton")
+    cancelBtn.Size = UDim2.new(0.45, -10, 0, 48)
+    cancelBtn.Position = UDim2.new(0, 10, 1, -58)
+    cancelBtn.BackgroundColor3 = THEME.DARK
+    cancelBtn.TextColor3 = THEME.MAIN
+    cancelBtn.Text = "Cancel"
+    cancelBtn.TextScaled = true
+    cancelBtn.Font = Enum.Font.GothamBold
+    cancelBtn.BorderSizePixel = 2
+    cancelBtn.BorderColor3 = THEME.MAIN
+    cancelBtn.ZIndex = 102
+    cancelBtn.Parent = confirmFrame
+    cancelBtn.AutoButtonColor = false
+    local cbc = Instance.new("UICorner"); cbc.CornerRadius = UDim.new(0, 6); cbc.Parent = cancelBtn
+    AddStroke(cancelBtn, THEME.MAIN, 2); AddTextStroke(cancelBtn)
+
+    local runBtn = Instance.new("TextButton")
+    runBtn.Size = UDim2.new(0.45, -10, 0, 48)
+    runBtn.Position = UDim2.new(0.5, 0, 1, -58)
+    runBtn.BackgroundColor3 = THEME.DARK
+    runBtn.TextColor3 = THEME.SUB
+    runBtn.Text = "Run AutoFarm (5)"
+    runBtn.TextScaled = true
+    runBtn.Font = Enum.Font.GothamBold
+    runBtn.BorderSizePixel = 2
+    runBtn.BorderColor3 = THEME.SUB
+    runBtn.ZIndex = 102
+    runBtn.Parent = confirmFrame
+    runBtn.AutoButtonColor = false
+    local rbc = Instance.new("UICorner"); rbc.CornerRadius = UDim.new(0, 6); rbc.Parent = runBtn
+    AddStroke(runBtn, THEME.SUB, 2); AddTextStroke(runBtn)
+
+    local canRun = false
+
+    task.spawn(function()
+        for i = 5, 1, -1 do
+            runBtn.Text = "Run AutoFarm (" .. i .. ")"
+            task.wait(1)
+            if not confirmFrame.Parent then return end
+        end
+        canRun = true
+        runBtn.Text = "Run AutoFarm"
+        runBtn.TextColor3 = THEME.OK
+        runBtn.BorderColor3 = THEME.OK
+        AddStroke(runBtn, THEME.OK, 2)
+    end)
+
+    cancelBtn.MouseButton1Click:Connect(function()
+        confirmFrame:Destroy()
+        Notify("AutoFarm cancelled", 2)
+    end)
+
+    runBtn.MouseButton1Click:Connect(function()
+        if not canRun then
+            Notify("Please wait!", 2)
+            return
+        end
+        confirmFrame:Destroy()
+        State.FarmNeedStop = false
+        State.FarmCurrentCycle = 0
+        State.FarmItemsCollected = 0
+        task.spawn(FarmMainLoop)
+    end)
+end
+
+-- ============================================================
+-- MISC BUTTONS: AutoFarm
+-- ============================================================
+local function MakeFarmBtn(name, color, onClick)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -4, 0, 34)
+    btn.BackgroundColor3 = THEME.DARK
+    btn.TextColor3 = color
+    btn.Text = name
+    btn.TextScaled = true
+    btn.Font = Enum.Font.GothamBold
+    btn.BorderSizePixel = 2
+    btn.BorderColor3 = color
+    btn.Parent = MiscScroll
+    btn.AutoButtonColor = false
+    local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 6); bc.Parent = btn
+    AddStroke(btn, color, 2); AddTextStroke(btn)
+
+    local pressStart, pressPos, moved, tracking = 0, nil, false, false
+    btn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            pressStart = tick(); pressPos = input.Position; moved = false; tracking = true
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if tracking and pressPos and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            if (input.Position - pressPos).Magnitude > 8 then moved = true end
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if not tracking then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            tracking = false
+            local held = tick() - pressStart
+            if not moved and held < 0.4 and (tick() - State.lastScrollMisc) > 0.4 and not State.miscScrolling then
+                local mp = input.Position
+                local cp, cs = btn.AbsolutePosition, btn.AbsoluteSize
+                if mp.X >= cp.X and mp.X <= cp.X + cs.X and mp.Y >= cp.Y and mp.Y <= cp.Y + cs.Y then
+                    onClick()
+                end
+            end
+        end
+    end)
+end
+
+MakeFarmBtn("🤖 Run AutoFarm", Color3.fromRGB(0, 200, 255), function()
+    ShowAutoFarmConfirm()
 end)
 
-print("[XyqwPiggy v" .. VERSION .. "] Loaded!")
-print("[XyqwPiggy v" .. VERSION .. "] Game: " .. CURRENT_GAME.name .. " (" .. game.PlaceId .. ")")
-print("[XyqwPiggy v" .. VERSION .. "] Made by Xyqwerq")
+MakeFarmBtn("⏹ Stop AutoFarm", Color3.fromRGB(255, 0, 0), function()
+    State.FarmNeedStop = true
+    State.FarmRunning = false
+    Notify("AutoFarm stopped", 2)
+end)
 
-Notify("Loaded: " .. CURRENT_GAME.name, 4)
+-- ============================================================
+-- SKINCHANGER через loadstring
+-- ============================================================
+SkinBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+    MiscFrame.Visible = false
+    DockBtn.Visible = true
+
+    Notify("Loading SkinChanger...", 3)
+
+    local ok, err = pcall(function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/Xyqwerq/XyqwSkinChanger-Piggy/main/main.lua"))()
+    end)
+
+    if not ok then
+        Notify("SkinChanger failed: " .. tostring(err), 4)
+    else
+        Notify("SkinChanger loaded!", 2)
+    end
+end)
+
+-- ============================================================
+-- FINAL LOAD
+-- ============================================================
+print("[XyqwPiggy v" .. VERSION .. "] Loaded!")
+print("[XyqwPiggy v" .. VERSION .. "] Game: " .. CURRENT_GAME.name)
+print("[XyqwPiggy v" .. VERSION .. "] SkinChanger через loadstring")
+print("[XyqwPiggy v" .. VERSION .. "] AutoFarm в Misc")
+print("[XyqwPiggy v" .. VERSION .. "] By Xyqwerq")
+
+Notify("XyqwPiggy v" .. VERSION .. " loaded!", 4)
