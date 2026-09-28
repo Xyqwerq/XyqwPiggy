@@ -1,14 +1,19 @@
 -- ============================================================
--- ========== XyqwPiggy v7.1 UNIVERSAL ==========
+-- ========== XyqwPiggy v7.2 SUPER FIX ==========
 -- ============================================================
 -- Автор: Xyqwerq
--- ✅ SkinChanger через loadScriptFromURL
--- ✅ AutoFarm Gallery
--- ✅ Book 1 + Book 2 предметы
--- ✅ Исправлен скролл Misc
+-- ✅ FIX: SkinChanger (game:HttpGet)
+-- ✅ FIX: AutoFarm (ItemFolder → GetListItems + fallback)
+-- ✅ FIX: Play/Skip (рекурсивный поиск кнопок)
+-- ✅ FIX: MiscFrame позиция
+-- ✅ FIX: ESP Items обновление
+-- ✅ FIX: Auto-AFK (VirtualUser)
+-- ✅ FIX: Anti-Trap raycast
+-- ✅ FIX: утечка spinningModels
+-- ✅ NEW: уведомления AutoFarm + SkinChanger
 -- ============================================================
 
-local VERSION = "7.1"
+local VERSION = "7.2"
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
@@ -64,51 +69,57 @@ local function AddTextStroke(label)
 end
 
 -- ============================================================
--- LOAD SCRIPT FROM URL
+-- LOAD SCRIPT FROM URL (FIXED)
 -- ============================================================
 local function loadScriptFromURL(url, name)
     Notify("Loading " .. (name or "script") .. "...", 2)
     print("[XyqwPiggy] Loading: " .. url)
-    
+
     local ok, err = pcall(function()
-        if loadstring and game.HttpGet then
-            local source = game.HttpGet(url)
-            if source and #source > 0 then
+        -- Метод 1: game:HttpGet (двоеточие!)
+        if loadstring then
+            local s_ok, source = pcall(function() return game:HttpGet(url) end)
+            if s_ok and source and #source > 0 then
                 local fn = loadstring(source)
                 if fn then
                     fn()
-                    Notify("✓ " .. (name or "script") .. " loaded!", 2)
+                    Notify("✓ " .. (name or "script") .. " loaded!", 3)
+                    print("[XyqwPiggy] " .. (name or "script") .. " loaded via game:HttpGet")
                     return
                 end
             end
         end
+        -- Метод 2: request
         if request then
             local r = request({Url = url, Method = "GET"})
             if r and r.Body then
                 local fn = loadstring(r.Body)
                 if fn then
                     fn()
-                    Notify("✓ " .. (name or "script") .. " loaded!", 2)
+                    Notify("✓ " .. (name or "script") .. " loaded!", 3)
+                    print("[XyqwPiggy] " .. (name or "script") .. " loaded via request")
                     return
                 end
             end
         end
+        -- Метод 3: http_request
         if http_request then
             local r = http_request({Url = url, Method = "GET"})
             if r and r.Body then
                 local fn = loadstring(r.Body)
                 if fn then
                     fn()
-                    Notify("✓ " .. (name or "script") .. " loaded!", 2)
+                    Notify("✓ " .. (name or "script") .. " loaded!", 3)
+                    print("[XyqwPiggy] " .. (name or "script") .. " loaded via http_request")
                     return
                 end
             end
         end
         error("All methods failed")
     end)
-    
+
     if not ok then
-        Notify("Failed: " .. tostring(err), 4)
+        Notify("Failed: " .. tostring(err), 5)
         print("[XyqwPiggy] Error: " .. tostring(err))
     end
 end
@@ -117,9 +128,6 @@ end
 -- STATE
 -- ============================================================
 local State = {
-    ScannedItems = {},
-    SpinningModels = {},
-    CurrentEquipped = nil,
     ESPItems = false,
     ESPMonster = false,
     ESPPlayers = false,
@@ -614,8 +622,19 @@ CloseBtn.MouseButton1Click:Connect(function()
     DockBtn.Visible = true
 end)
 
+-- FIX: MiscFrame позиционируется относительно MainFrame
 MiscBtn.MouseButton1Click:Connect(function()
-    MiscFrame.Visible = not MiscFrame.Visible
+    if MiscFrame.Visible then
+        MiscFrame.Visible = false
+    else
+        MiscFrame.Visible = true
+        MiscFrame.Position = UDim2.new(
+            MainFrame.Position.X.Scale,
+            MainFrame.Position.X.Offset + MainFrame.AbsoluteSize.X + 8,
+            MainFrame.Position.Y.Scale,
+            MainFrame.Position.Y.Offset
+        )
+    end
 end)
 MiscClose.MouseButton1Click:Connect(function()
     MiscFrame.Visible = false
@@ -661,6 +680,7 @@ task.spawn(function()
 end)
 
 print("[XyqwPiggy v" .. VERSION .. "] Part 1 loaded!")
+
 -- ============================================================
 -- ESP FOLDER
 -- ============================================================
@@ -884,7 +904,7 @@ local function TakeItem(item)
 end
 
 -- ============================================================
--- REFRESH LIST
+-- REFRESH LIST (FIX: cleanup spinningModels)
 -- ============================================================
 function _G.__RefreshItemList()
     if scanInProgress then return end
@@ -900,12 +920,21 @@ function _G.__RefreshItemList()
     InfoLabel.Text = "Items: " .. #currentItems
     local newKeys = {}
     for _, item in ipairs(currentItems) do newKeys[item.key] = true end
+
     for key, row in pairs(existingRows) do
         if not newKeys[key] then
+            -- FIX: чистим spinningModels у которых Parent == nil
+            for i = #spinningModels, 1, -1 do
+                local m = spinningModels[i]
+                if not m or not m.Parent then
+                    table.remove(spinningModels, i)
+                end
+            end
             row:Destroy()
             existingRows[key] = nil
         end
     end
+
     for i, item in ipairs(currentItems) do
         local row = existingRows[item.key]
         if not row then
@@ -1009,10 +1038,12 @@ RunService.RenderStepped:Connect(function(dt)
 end)
 
 -- ============================================================
--- ESP ITEMS
+-- ESP ITEMS (FIX: обновление)
 -- ============================================================
 local function EnableItemESP()
+    local current = {}
     for _, item in ipairs(GetListItems()) do
+        current[item.part] = true
         if not ESP.Items[item.part] then
             local hl = Instance.new("Highlight")
             hl.FillColor = THEME.MAIN
@@ -1025,12 +1056,30 @@ local function EnableItemESP()
             ESP.Items[item.part] = hl
         end
     end
+    for part, hl in pairs(ESP.Items) do
+        if not current[part] then
+            pcall(function() hl:Destroy() end)
+            ESP.Items[part] = nil
+        end
+    end
 end
 
 local function DisableItemESP()
     for _, hl in pairs(ESP.Items) do pcall(function() hl:Destroy() end) end
     ESP.Items = {}
 end
+
+-- Цикл обновления ESP Items
+task.spawn(function()
+    while true do
+        if State.ESPItems then
+            pcall(EnableItemESP)
+            task.wait(1)
+        else
+            task.wait(0.5)
+        end
+    end
+end)
 
 -- ESP MONSTER
 local function EnableMonsterESP()
@@ -1113,7 +1162,9 @@ task.spawn(function()
     end
 end)
 
--- ANTI-TRAP
+-- ============================================================
+-- ANTI-TRAP (FIX: raycast вверх)
+-- ============================================================
 task.spawn(function()
     while true do
         if State.AntiTrap then
@@ -1127,8 +1178,17 @@ task.spawn(function()
                         if n:find("trap") or n:find("lava") or n:find("spike")
                         or n:find("kill") or n:find("damage") or n:find("bear") then
                             if (obj.Position - hrp.Position).Magnitude < 6 then
-                                hrp.CFrame = hrp.CFrame + Vector3.new(0, 25, 0)
-                                Notify("Anti-Trap!", 1)
+                                local ray = Ray.new(hrp.Position, Vector3.new(0, 25, 0))
+                                local hit, pos = workspace:FindPartOnRay(ray, char)
+                                if hit then
+                                    hrp.CFrame = CFrame.new(pos - Vector3.new(0, 3, 0))
+                                else
+                                    hrp.CFrame = hrp.CFrame + Vector3.new(0, 15, 0)
+                                end
+                                if not _G.__lastTrapNotify or tick() - _G.__lastTrapNotify > 2 then
+                                    _G.__lastTrapNotify = tick()
+                                    Notify("Anti-Trap!", 1)
+                                end
                                 break
                             end
                         end
@@ -1140,15 +1200,16 @@ task.spawn(function()
     end
 end)
 
--- AUTO-AFK
+-- ============================================================
+-- AUTO-AFK (FIX)
+-- ============================================================
 task.spawn(function()
     while true do
         if State.AutoAFK then
             pcall(function()
-                if VirtualUser and VirtualUser.Button1Down then
-                    VirtualUser:Button1Down(Vector2.new(0, 0))
-                elseif VirtualUser and VirtualUser.ClickButton1 then
-                    VirtualUser:ClickButton1(Vector2.new(0, 0))
+                if VirtualUser then
+                    VirtualUser:CaptureController()
+                    VirtualUser:ClickButton1(Vector2.new(500, 500))
                 end
             end)
         end
@@ -1212,12 +1273,12 @@ task.spawn(function()
     end
 end)
 
--- Авто-обновление списка
+-- Авто-обновление списка (FIX: 3 сек вместо 1)
 task.spawn(function()
     task.wait(1)
     _G.__RefreshItemList()
     while true do
-        task.wait(1)
+        task.wait(3)
         if not scanInProgress then
             _G.__RefreshItemList()
         end
@@ -1225,6 +1286,7 @@ task.spawn(function()
 end)
 
 print("[XyqwPiggy v" .. VERSION .. "] Part 2 loaded!")
+
 -- ============================================================
 -- AUTOFARM: REMOTES
 -- ============================================================
@@ -1279,6 +1341,20 @@ local function SafeClickBtn(btn)
     end)
 end
 
+-- FIX: рекурсивный поиск кнопок
+local function FindButtonRecursive(parent, name)
+    if not parent then return nil end
+    for _, obj in ipairs(parent:GetDescendants()) do
+        if obj:IsA("TextButton") or obj:IsA("ImageButton") then
+            if obj.Name == name or obj.Name:lower() == name:lower() then
+                if obj.Visible then return obj end
+            end
+        end
+    end
+    return nil
+end
+
+-- FIX: FarmPressPlay с рекурсивным поиском
 local function FarmPressPlay()
     if FarmRemotes.JoinGame then
         if SafeFireRemote(FarmRemotes.JoinGame, true) then
@@ -1288,35 +1364,29 @@ local function FarmPressPlay()
     end
     local pg = LP:FindFirstChild("PlayerGui")
     if pg then
-        local mm = pg:FindFirstChild("MainMenu")
-        if mm then
-            local ms = mm:FindFirstChild("MainScreen")
-            if ms then
-                local cf = ms:FindFirstChild("CenterFrame")
-                if cf then
-                    local cb = cf:FindFirstChild("CenterButtons")
-                    if cb then
-                        local playBtn = cb:FindFirstChild("Play")
-                        if playBtn then
-                            SafeClickBtn(playBtn)
-                            return true
-                        end
-                    end
-                end
+        for _, name in ipairs({"Play", "play", "PlayButton"}) do
+            local playBtn = FindButtonRecursive(pg, name)
+            if playBtn then
+                SafeClickBtn(playBtn)
+                return true
             end
         end
     end
     return false
 end
 
+-- FIX: FarmPressSkip с рекурсивным поиском
 local function FarmPressSkip()
     local pg = LP:FindFirstChild("PlayerGui")
     if not pg then return false end
-    local mm = pg:FindFirstChild("MainMenu")
-    if not mm then return false end
-    local skipBtn = mm:FindFirstChild("Skip")
+    local skipBtn = FindButtonRecursive(pg, "Skip")
     if skipBtn then
         SafeClickBtn(skipBtn)
+        Notify("Skip pressed", 1)
+        return true
+    end
+    if FarmRemotes.VIPCommandEvent then
+        SafeFireRemote(FarmRemotes.VIPCommandEvent, "SkipTimer", true)
         return true
     end
     return false
@@ -1337,27 +1407,55 @@ local function FarmSetupGallery()
     return true
 end
 
+-- FIX: FarmCollectOnce — использует GetListItems + fallback
 local function FarmCollectOnce()
     local collected = 0
     local char = LP.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return 0 end
-    local itemFolder = workspace:FindFirstChild("ItemFolder")
-    if not itemFolder then return 0 end
-    for _, item in ipairs(itemFolder:GetChildren()) do
-        if State.FarmNeedStop then break end
-        if item:IsA("BasePart") then
-            local cd = item:FindFirstChildOfClass("ClickDetector")
-            if cd then
-                pcall(function() hrp.CFrame = CFrame.new(item.Position + Vector3.new(0, 2, 0)) end)
-                task.wait(State.FarmConfig.COLLECT_DELAY)
-                pcall(function()
-                    if fireclickdetector then fireclickdetector(cd) end
-                end)
-                collected = collected + 1
-                State.FarmItemsCollected = State.FarmItemsCollected + 1
-                State.FarmLastActivity = tick()
+
+    local items = GetListItems()
+
+    if #items == 0 then
+        -- Fallback: сканируем workspace напрямую
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("ClickDetector") then
+                local part = obj.Parent
+                if part and part:IsA("BasePart") then
+                    local hasPE = part:FindFirstChildOfClass("ParticleEmitter") ~= nil
+                    local hasPickup = false
+                    for _, ch in ipairs(part:GetChildren()) do
+                        if ch:IsA("Script") and (ch.Name == "ItemPickupScript" or ch.Name == "NewItemPickupScript") then
+                            hasPickup = true; break
+                        end
+                    end
+                    if hasPE or hasPickup then
+                        table.insert(items, { part = part, detector = obj, key = "", pos = part.Position })
+                    end
+                end
             end
+        end
+    end
+
+    for _, item in ipairs(items) do
+        if State.FarmNeedStop then break end
+        local cd = item.detector
+        if cd and item.part then
+            local saved = hrp.CFrame
+            pcall(function() cd.MaxActivationDistance = math.huge end)
+            pcall(function()
+                hrp.CFrame = CFrame.new(item.part.Position + Vector3.new(0, 3, 0))
+            end)
+            task.wait(State.FarmConfig.COLLECT_DELAY or 0.05)
+            pcall(function()
+                if fireclickdetector then fireclickdetector(cd) end
+            end)
+            task.wait(State.FarmConfig.COLLECT_DELAY or 0.05)
+            pcall(function() hrp.CFrame = saved end)
+
+            collected = collected + 1
+            State.FarmItemsCollected = State.FarmItemsCollected + 1
+            State.FarmLastActivity = tick()
         end
     end
     return collected
@@ -1377,12 +1475,15 @@ end
 local function FarmMainLoop()
     State.FarmRunning = true
     Notify("AutoFarm started!", 3)
+    print("[XyqwPiggy] AutoFarm: loop started")
     RefreshFarmRemotes()
 
     while State.FarmConfig.AUTO_LOOP and not State.FarmNeedStop do
         State.FarmCurrentCycle = State.FarmCurrentCycle + 1
         State.FarmItemsCollected = 0
         State.FarmLastActivity = tick()
+
+        Notify("Cycle #" .. State.FarmCurrentCycle, 2)
 
         local phase = GetGamePhase()
         if not phase or phase == "GameInProgress" then
@@ -1427,6 +1528,8 @@ local function FarmMainLoop()
             task.wait(2)
             if State.FarmConfig.AUTO_COLLECT then
                 FarmCollectLoop()
+                Notify("Collected: " .. State.FarmItemsCollected, 3)
+                print("[XyqwPiggy] Cycle #" .. State.FarmCurrentCycle .. " collected: " .. State.FarmItemsCollected)
             end
             if State.FarmConfig.AUTO_SKIP and not State.FarmNeedStop then
                 task.wait(2)
@@ -1440,7 +1543,8 @@ local function FarmMainLoop()
     end
 
     State.FarmRunning = false
-    Notify("AutoFarm stopped", 3)
+    Notify("⏹ AutoFarm stopped", 3)
+    print("[XyqwPiggy] AutoFarm: loop stopped")
 end
 
 _G.__FarmMainLoop = FarmMainLoop
@@ -1518,10 +1622,10 @@ local function ShowAutoFarmConfirm()
     serverStatus.Position = UDim2.new(0, 10, 0, 110)
     serverStatus.BackgroundTransparency = 1
     if isPrivate then
-        serverStatus.Text = "You are currently on a PRIVATE server."
+        serverStatus.Text = "✅ You are currently on a PRIVATE server."
         serverStatus.TextColor3 = Color3.fromRGB(0, 255, 100)
     else
-        serverStatus.Text = "You are currently on a PUBLIC server, AutoFarm may not work!"
+        serverStatus.Text = "⚠You are currently on a PUBLIC server, AutoFarm may not work!"
         serverStatus.TextColor3 = Color3.fromRGB(255, 0, 0)
     end
     serverStatus.TextScaled = true
@@ -1562,7 +1666,9 @@ local function ShowAutoFarmConfirm()
     runBtn.Parent = confirmFrame
     runBtn.AutoButtonColor = false
     local rbc = Instance.new("UICorner"); rbc.CornerRadius = UDim.new(0, 6); rbc.Parent = runBtn
-    AddStroke(runBtn, THEME.SUB, 2); AddTextStroke(runBtn)
+    -- FIX: один UIStroke, сохраняем ссылку
+    local runStroke = AddStroke(runBtn, THEME.SUB, 2)
+    AddTextStroke(runBtn)
 
     local canRun = false
 
@@ -1576,7 +1682,7 @@ local function ShowAutoFarmConfirm()
         runBtn.Text = "Run AutoFarm"
         runBtn.TextColor3 = THEME.OK
         runBtn.BorderColor3 = THEME.OK
-        AddStroke(runBtn, THEME.OK, 2)
+        if runStroke then runStroke.Color = THEME.OK end
     end)
 
     cancelBtn.MouseButton1Click:Connect(function()
@@ -1593,6 +1699,7 @@ local function ShowAutoFarmConfirm()
         State.FarmNeedStop = false
         State.FarmCurrentCycle = 0
         State.FarmItemsCollected = 0
+        Notify("🚀 Launching AutoFarm...", 2)
         task.spawn(FarmMainLoop)
     end)
 end
@@ -1642,26 +1749,28 @@ local function MakeMiscBtn(name, color, onClick)
     end)
 end
 
-MakeMiscBtn("🤖 Run AutoFarm", Color3.fromRGB(0, 200, 255), function()
+MakeMiscBtn("Run AutoFarm", Color3.fromRGB(0, 200, 255), function()
+    Notify("Opening AutoFarm...", 2)
     ShowAutoFarmConfirm()
 end)
 
-MakeMiscBtn("⏹ Stop AutoFarm", Color3.fromRGB(255, 0, 0), function()
+MakeMiscBtn("Stop AutoFarm", Color3.fromRGB(255, 0, 0), function()
     State.FarmNeedStop = true
     State.FarmRunning = false
     Notify("AutoFarm stopped", 2)
 end)
 
 -- ============================================================
--- SKINCHANGER через loadScriptFromURL
+-- SKINCHANGER
 -- ============================================================
 local SKINCHANGER_URL = "https://raw.githubusercontent.com/Xyqwerq/XyqwSkinChanger-Piggy/main/main.lua"
 
 SkinBtn.MouseButton1Click:Connect(function()
+    Notify("Loading XyqwSkinChanger...", 2)
+    print("[XyqwPiggy] SkinChanger button clicked")
     MainFrame.Visible = false
     MiscFrame.Visible = false
     DockBtn.Visible = true
-    
     loadScriptFromURL(SKINCHANGER_URL, "SkinChanger")
 end)
 
