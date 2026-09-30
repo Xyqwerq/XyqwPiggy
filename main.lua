@@ -1,15 +1,14 @@
-print("[XyqwPiggy] Loading v7.5...")
+print("[XyqwPiggy] Loading v7.6...")
 
 local _ok, _err = pcall(function()
 
 -- ============================================================
--- XyqwPiggy v7.5
+-- XyqwPiggy v7.6
 -- Author: Xyqwerq
--- Modules: XyqwAutoFarm, XyqwSkinChanger
--- + Delete Piggy, Animations, Readable text
+-- + Delete Piggy, Animations, VIP Warning, Colored module buttons
 -- ============================================================
 
-local VERSION = "7.5"
+local VERSION = "7.6"
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
@@ -32,6 +31,8 @@ local THEME = {
     GOLD   = Color3.fromRGB(255, 215, 0),
     YELLOW = Color3.fromRGB(255, 220, 0),
     CYAN   = Color3.fromRGB(0, 220, 255),
+    PINK   = Color3.fromRGB(255, 100, 200),  -- для AutoFarm
+    GREEN  = Color3.fromRGB(0, 255, 100),    -- для SkinChanger
 }
 
 local function Notify(text, duration)
@@ -68,6 +69,23 @@ local function AddTextStroke(label, thickness)
 end
 
 -- ============================================================
+-- VIP CHECK
+-- ============================================================
+local function IsVIP()
+    local gf = workspace:FindFirstChild("GameFolder")
+    if gf then
+        local vip = gf:FindFirstChild("IsVIPServer")
+        if vip and vip.Value then return true end
+    end
+    if game.PrivateServerId and game.PrivateServerId ~= "" then
+        if game.PrivateServerOwnerId == LP.UserId or game.PrivateServerOwnerId == 0 then
+            return true
+        end
+    end
+    return false
+end
+
+-- ============================================================
 -- LOAD SCRIPT FROM URL
 -- ============================================================
 local function loadScriptFromURL(url, name)
@@ -79,11 +97,7 @@ local function loadScriptFromURL(url, name)
             local s_ok, source = pcall(function() return game:HttpGet(url) end)
             if s_ok and source and #source > 0 then
                 local fn = loadstring(source)
-                if fn then
-                    fn()
-                    Notify("OK " .. (name or "script"), 3)
-                    return
-                end
+                if fn then fn(); Notify("OK " .. (name or "script"), 3); return end
             end
         end
         if request then
@@ -118,8 +132,8 @@ local State = {
     ESPPlayers = false,
     AntiTrap = false,
     AutoAFK = false,
-    DeletePiggy = false,        -- GUI состояние
-    DeletePiggyActive = false,  -- реальное состояние (фон)
+    DeletePiggy = false,
+    DeletePiggyActive = false,
     lastScrollMisc = 0,
     miscScrolling = false,
 }
@@ -231,11 +245,9 @@ local function EnableDeletePiggy()
     if IsCutsceneOver() then
         State.DeletePiggyActive = true
         Notify("Delete Piggy: ACTIVE", 3)
-        print("[XyqwPiggy] Delete Piggy: ACTIVE")
     else
         State.DeletePiggyActive = false
         Notify("Piggy will be deleted after cutscene!", 5)
-        print("[XyqwPiggy] Delete Piggy: ARMED (waiting cutscene)")
     end
     deletePiggyConn = RunService.Heartbeat:Connect(function()
         if not State.DeletePiggy then return end
@@ -243,26 +255,18 @@ local function EnableDeletePiggy()
         if over and not State.DeletePiggyActive then
             State.DeletePiggyActive = true
             Notify("Delete Piggy: ACTIVE", 3)
-            print("[XyqwPiggy] Delete Piggy: ACTIVATED")
         elseif not over and State.DeletePiggyActive then
             State.DeletePiggyActive = false
             Notify("Piggy will be deleted after cutscene!", 5)
-            print("[XyqwPiggy] Delete Piggy: PAUSED")
         end
-        if State.DeletePiggyActive then
-            RunDeletePiggyTick()
-        end
+        if State.DeletePiggyActive then RunDeletePiggyTick() end
     end)
 end
 
 local function DisableDeletePiggy()
     State.DeletePiggy = false
     State.DeletePiggyActive = false
-    if deletePiggyConn then
-        deletePiggyConn:Disconnect()
-        deletePiggyConn = nil
-    end
-    print("[XyqwPiggy] Delete Piggy: OFF")
+    if deletePiggyConn then deletePiggyConn:Disconnect(); deletePiggyConn = nil end
 end
 
 -- ============================================================
@@ -277,7 +281,7 @@ ScreenGui.DisplayOrder = 999
 pcall(function() ScreenGui.Parent = CoreGui end)
 if not ScreenGui.Parent then ScreenGui.Parent = playerGui end
 
--- DOCK (с анимацией ховера)
+-- DOCK
 local DockBtn = Instance.new("TextButton")
 DockBtn.Size = UDim2.new(0, 110, 0, 38)
 DockBtn.Position = UDim2.new(0.03, 0, 0.15, 0)
@@ -295,10 +299,12 @@ local DockStroke = AddStroke(DockBtn, THEME.MAIN, 2)
 AddTextStroke(DockBtn, 1.5)
 
 DockBtn.MouseEnter:Connect(function()
-    Tween(DockStroke, 0.3, { Thickness = 3, Color = Color3.fromRGB(255, 100, 100) })
+    Tween(DockStroke, 0.3, { Thickness = 3, Color = Color3.fromRGB(255, 120, 120) })
+    Tween(DockBtn, 0.3, { BackgroundColor3 = Color3.fromRGB(30, 0, 0) })
 end)
 DockBtn.MouseLeave:Connect(function()
     Tween(DockStroke, 0.3, { Thickness = 2, Color = THEME.MAIN })
+    Tween(DockBtn, 0.3, { BackgroundColor3 = THEME.BG })
 end)
 
 -- MAIN FRAME
@@ -476,13 +482,16 @@ local function MakeBtn(name, x, w)
     btn.Parent = BtnFrame
     btn.AutoButtonColor = false
     local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 6); bc.Parent = btn
-    AddStroke(btn); AddTextStroke(btn, 1)
+    local bStroke = AddStroke(btn)
+    AddTextStroke(btn, 1)
 
     btn.MouseEnter:Connect(function()
-        Tween(btn, 0.25, { BackgroundColor3 = Color3.fromRGB(80, 0, 0), BorderColor3 = Color3.fromRGB(255, 100, 100) })
+        Tween(btn, 0.25, { BackgroundColor3 = Color3.fromRGB(80, 0, 0) })
+        Tween(bStroke, 0.25, { Color = Color3.fromRGB(255, 100, 100) })
     end)
     btn.MouseLeave:Connect(function()
-        Tween(btn, 0.25, { BackgroundColor3 = THEME.DARK, BorderColor3 = THEME.MAIN })
+        Tween(btn, 0.25, { BackgroundColor3 = THEME.DARK })
+        Tween(bStroke, 0.25, { Color = THEME.MAIN })
     end)
 
     return btn
@@ -493,7 +502,9 @@ local OpenGameBtn = MakeBtn("Menu", 0.25, 0.24)
 local RefreshBalBtn = MakeBtn("Balance", 0.50, 0.24)
 local ResetBtn = MakeBtn("Reset", 0.75, 0.24)
 
+-- ============================================================
 -- MISC FRAME
+-- ============================================================
 local MiscFrame = Instance.new("Frame")
 MiscFrame.Name = "MiscFrame"
 MiscFrame.Size = UDim2.new(0, 230, 0, 340)
@@ -576,7 +587,7 @@ MiscScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
     end)
 end)
 
--- MAKE TOGGLE (с анимацией ховера)
+-- MAKE TOGGLE
 local function MakeToggle(name, getState, onToggle)
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1, -4, 0, 28)
@@ -612,7 +623,6 @@ local function MakeToggle(name, getState, onToggle)
     local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 4); bc.Parent = box
     AddStroke(box)
 
-    -- Анимация ховера на строке
     row.MouseEnter:Connect(function()
         Tween(row, 0.3, { BackgroundColor3 = Color3.fromRGB(70, 0, 0) })
         Tween(rowStroke, 0.3, { Color = Color3.fromRGB(255, 100, 100), Thickness = 2 })
@@ -667,31 +677,40 @@ local function MakeToggle(name, getState, onToggle)
     end)
 end
 
--- MAKE MISC BTN (тонкий текст + анимация)
-local function MakeMiscBtn(name, color, onClick)
+-- ============================================================
+-- MAKE MODULE BTN (розовый/зелёный, БЕЗ обводки текста)
+-- ============================================================
+local function MakeModuleBtn(name, textColor, onClick)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1, -4, 0, 32)
     btn.BackgroundColor3 = THEME.DARK
-    btn.TextColor3 = color
+    btn.TextColor3 = textColor
     btn.Text = name
-    btn.TextSize = 13                              -- было 14
-    btn.Font = Enum.Font.Gotham                    -- было GothamBold (жирный)
+    btn.TextSize = 13
+    btn.Font = Enum.Font.GothamBold       -- остаётся жирным, но БЕЗ обводки
     btn.BorderSizePixel = 2
-    btn.BorderColor3 = color
+    btn.BorderColor3 = textColor
     btn.Parent = MiscScroll
     btn.AutoButtonColor = false
     local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 6); bc.Parent = btn
-    local btnStroke = AddStroke(btn, color, 1.5)   -- было 2
-    AddTextStroke(btn, 1)                          -- было 1.5
+    local btnStroke = AddStroke(btn, textColor, 1.5)
+    -- ← НЕТ AddTextStroke (обводка текста убрана)
 
-    -- Анимация ховера
+    -- Ховер: свечение + рост обводки + лёгкое увеличение текста
     btn.MouseEnter:Connect(function()
-        Tween(btn, 0.3, { BackgroundColor3 = Color3.fromRGB(80, 80, 20) })
-        Tween(btnStroke, 0.3, { Thickness = 2.5 })
+        Tween(btn, 0.35, {
+            BackgroundColor3 = Color3.fromRGB(
+                math.floor(textColor.R * 0.25 * 255),
+                math.floor(textColor.G * 0.25 * 255),
+                math.floor(textColor.B * 0.25 * 255)
+            ),
+            TextSize = 14
+        })
+        Tween(btnStroke, 0.35, { Thickness = 3 })
     end)
     btn.MouseLeave:Connect(function()
-        Tween(btn, 0.3, { BackgroundColor3 = THEME.DARK })
-        Tween(btnStroke, 0.3, { Thickness = 1.5 })
+        Tween(btn, 0.35, { BackgroundColor3 = THEME.DARK, TextSize = 13 })
+        Tween(btnStroke, 0.35, { Thickness = 1.5 })
     end)
 
     local pressStart, pressPos, moved, tracking = 0, nil, false, false
@@ -732,18 +751,185 @@ MakeToggle("Anti-Trap", function() return State.AntiTrap end, function() State.A
 MakeToggle("Auto-AFK", function() return State.AutoAFK end, function() State.AutoAFK = not State.AutoAFK end)
 
 -- ============================================================
--- MODULE BUTTONS (читаемый текст)
+-- WARNING POPUP
+-- ============================================================
+local WarnGui = Instance.new("ScreenGui")
+WarnGui.Name = "XyqwWarn"
+WarnGui.ResetOnSpawn = false
+WarnGui.IgnoreGuiInset = true
+WarnGui.DisplayOrder = 1000
+pcall(function() WarnGui.Parent = CoreGui end)
+if not WarnGui.Parent then WarnGui.Parent = playerGui end
+
+local function ShowAutoFarmWarning(onConfirm)
+    local vip = IsVIP()
+
+    local overlay = Instance.new("TextButton")
+    overlay.Size = UDim2.new(1, 0, 1, 0)
+    overlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    overlay.BackgroundTransparency = 1
+    overlay.Text = ""
+    overlay.AutoButtonColor = false
+    overlay.Parent = WarnGui
+
+    local box = Instance.new("Frame")
+    box.Size = UDim2.new(0, 340, 0, 220)
+    box.Position = UDim2.new(0.5, -170, 0.5, -110)
+    box.BackgroundColor3 = THEME.BG
+    box.BorderSizePixel = 3
+    box.BorderColor3 = THEME.PINK
+    box.Parent = overlay
+    local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 12); bc.Parent = box
+    local boxStroke = Instance.new("UIStroke"); boxStroke.Color = THEME.PINK; boxStroke.Thickness = 2; boxStroke.Parent = box
+
+    -- Анимация появления
+    box.Size = UDim2.new(0, 0, 0, 0)
+    box.BackgroundTransparency = 1
+    Tween(box, 0.4, {
+        Size = UDim2.new(0, 340, 0, 220),
+        BackgroundTransparency = 0
+    }, Enum.EasingStyle.Back)
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, -20, 0, 34)
+    title.Position = UDim2.new(0, 10, 0, 8)
+    title.BackgroundTransparency = 1
+    title.Text = "XyqwAutoFarm"
+    title.TextColor3 = THEME.PINK
+    title.TextSize = 20
+    title.Font = Enum.Font.GothamBold
+    title.TextXAlignment = Enum.TextXAlignment.Center
+    title.Parent = box
+
+    local line1 = Instance.new("TextLabel")
+    line1.Size = UDim2.new(1, -20, 0, 22)
+    line1.Position = UDim2.new(0, 10, 0, 48)
+    line1.BackgroundTransparency = 1
+    line1.Text = "Этот скрипт работает только на вашем приватном сервере!"
+    line1.TextColor3 = Color3.fromRGB(230, 230, 230)
+    line1.TextSize = 13
+    line1.Font = Enum.Font.Gotham
+    line1.TextWrapped = true
+    line1.Parent = box
+
+    local line2 = Instance.new("TextLabel")
+    line2.Size = UDim2.new(1, -20, 0, 18)
+    line2.Position = UDim2.new(0, 10, 0, 72)
+    line2.BackgroundTransparency = 1
+    line2.Text = "(Вы должны быть хостом)"
+    line2.TextColor3 = Color3.fromRGB(180, 180, 180)
+    line2.TextSize = 12
+    line2.Font = Enum.Font.Gotham
+    line2.Parent = box
+
+    -- Статус сервера
+    local status = Instance.new("TextLabel")
+    status.Size = UDim2.new(1, -20, 0, 44)
+    status.Position = UDim2.new(0, 10, 0, 100)
+    status.BackgroundColor3 = vip and Color3.fromRGB(0, 40, 20) or Color3.fromRGB(50, 0, 10)
+    status.TextColor3 = vip and THEME.GREEN or THEME.OFF
+    status.Text = vip
+        and "✅ Вы сейчас на приватном сервере"
+        or  "❌ Вы сейчас не на приватном сервере!\nЗапуск заблокирован!"
+    status.TextSize = 13
+    status.Font = Enum.Font.GothamBold
+    status.TextWrapped = true
+    status.BorderSizePixel = 0
+    status.Parent = box
+    local sc = Instance.new("UICorner"); sc.CornerRadius = UDim.new(0, 6); sc.Parent = status
+    local sStroke = Instance.new("UIStroke")
+    sStroke.Color = vip and THEME.GREEN or THEME.OFF
+    sStroke.Thickness = 1.5
+    sStroke.Parent = status
+
+    -- Кнопки
+    local btnY = 156
+    local cancelBtn = Instance.new("TextButton")
+    cancelBtn.Size = UDim2.new(0, 150, 0, 42)
+    cancelBtn.Position = UDim2.new(0, 10, 0, btnY)
+    cancelBtn.BackgroundColor3 = THEME.DARK
+    cancelBtn.TextColor3 = THEME.MAIN
+    cancelBtn.Text = "Отмена"
+    cancelBtn.TextSize = 14
+    cancelBtn.Font = Enum.Font.GothamBold
+    cancelBtn.BorderSizePixel = 0
+    cancelBtn.Parent = box
+    cancelBtn.AutoButtonColor = false
+    local cbc = Instance.new("UICorner"); cbc.CornerRadius = UDim.new(0, 8); cbc.Parent = cancelBtn
+    local cbS = Instance.new("UIStroke"); cbS.Color = THEME.MAIN; cbS.Thickness = 1.5; cbS.Parent = cancelBtn
+
+    local okBtn = Instance.new("TextButton")
+    okBtn.Size = UDim2.new(0, 150, 0, 42)
+    okBtn.Position = UDim2.new(1, -160, 0, btnY)
+    okBtn.BackgroundColor3 = vip and Color3.fromRGB(0, 60, 30) or Color3.fromRGB(60, 0, 0)
+    okBtn.TextColor3 = vip and THEME.GREEN or Color3.fromRGB(120, 120, 120)
+    okBtn.Text = vip and "Запустить" or "Заблокировано"
+    okBtn.TextSize = 14
+    okBtn.Font = Enum.Font.GothamBold
+    okBtn.BorderSizePixel = 0
+    okBtn.Parent = box
+    okBtn.AutoButtonColor = false
+    okBtn.Active = vip
+    local obc = Instance.new("UICorner"); obc.CornerRadius = UDim.new(0, 8); obc.Parent = okBtn
+    local obS = Instance.new("UIStroke")
+    obS.Color = vip and THEME.GREEN or Color3.fromRGB(80, 0, 0)
+    obS.Thickness = 1.5
+    obS.Parent = okBtn
+
+    local function close()
+        Tween(box, 0.25, {
+            Size = UDim2.new(0, 0, 0, 0),
+            BackgroundTransparency = 1
+        }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+        task.delay(0.3, function()
+            pcall(function() overlay:Destroy() end)
+        end)
+    end
+
+    cancelBtn.MouseEnter:Connect(function()
+        Tween(cancelBtn, 0.25, { BackgroundColor3 = Color3.fromRGB(80, 0, 0) })
+    end)
+    cancelBtn.MouseLeave:Connect(function()
+        Tween(cancelBtn, 0.25, { BackgroundColor3 = THEME.DARK })
+    end)
+    cancelBtn.MouseButton1Click:Connect(close)
+
+    if vip then
+        okBtn.MouseEnter:Connect(function()
+            Tween(okBtn, 0.25, { BackgroundColor3 = Color3.fromRGB(0, 100, 50) })
+        end)
+        okBtn.MouseLeave:Connect(function()
+            Tween(okBtn, 0.25, { BackgroundColor3 = Color3.fromRGB(0, 60, 30) })
+        end)
+        okBtn.MouseButton1Click:Connect(function()
+            close()
+            task.delay(0.35, function()
+                if onConfirm then onConfirm() end
+            end)
+        end)
+    else
+        okBtn.MouseButton1Click:Connect(function()
+            -- Заблокировано — просто закрываем
+            close()
+        end)
+    end
+end
+
+-- ============================================================
+-- MODULE BUTTONS
 -- ============================================================
 local AUTOFARM_URL = "https://cdn.jsdelivr.net/gh/Xyqwerq/XyqwPiggy@main/XyqwAutoFarm.lua"
 local SKINCHANGER_URL = "https://cdn.jsdelivr.net/gh/Xyqwerq/XyqwSkinChanger-Piggy@main/main.lua"
 
-MakeMiscBtn("Load XyqwAutoFarm", THEME.YELLOW, function()
-    Notify("Loading XyqwAutoFarm...", 2)
-    print("[XyqwPiggy] Loading XyqwAutoFarm from: " .. AUTOFARM_URL)
-    loadScriptFromURL(AUTOFARM_URL, "XyqwAutoFarm")
+MakeModuleBtn("Load XyqwAutoFarm", THEME.PINK, function()
+    ShowAutoFarmWarning(function()
+        Notify("Loading XyqwAutoFarm...", 2)
+        print("[XyqwPiggy] Loading XyqwAutoFarm from: " .. AUTOFARM_URL)
+        loadScriptFromURL(AUTOFARM_URL, "XyqwAutoFarm")
+    end)
 end)
 
-MakeMiscBtn("Load XyqwSkinChanger", THEME.CYAN, function()
+MakeModuleBtn("Load XyqwSkinChanger", THEME.GREEN, function()
     Notify("Loading XyqwSkinChanger...", 2)
     print("[XyqwPiggy] Loading XyqwSkinChanger from: " .. SKINCHANGER_URL)
     loadScriptFromURL(SKINCHANGER_URL, "XyqwSkinChanger")
@@ -1090,7 +1276,6 @@ function _G.__RefreshItemList()
             local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(0, 6); rc.Parent = row
             local rowSt = AddStroke(row, THEME.STROKE, 1.5)
 
-            -- Ховер на строке предмета
             row.MouseEnter:Connect(function()
                 Tween(row, 0.3, { BackgroundColor3 = Color3.fromRGB(70, 0, 0) })
                 Tween(rowSt, 0.3, { Color = THEME.MAIN, Thickness = 2 })
