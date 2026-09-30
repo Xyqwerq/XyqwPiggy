@@ -1,20 +1,22 @@
-print("[XyqwPiggy] Loading v7.4...")
+print("[XyqwPiggy] Loading v7.5...")
 
 local _ok, _err = pcall(function()
 
 -- ============================================================
--- XyqwPiggy v7.4
+-- XyqwPiggy v7.5
 -- Author: Xyqwerq
 -- Modules: XyqwAutoFarm, XyqwSkinChanger
+-- + Delete Piggy, Animations, Readable text
 -- ============================================================
 
-local VERSION = "7.4"
+local VERSION = "7.5"
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
 local CoreGui           = game:GetService("CoreGui")
 local StarterGui        = game:GetService("StarterGui")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService      = game:GetService("TweenService")
 local LP                = Players.LocalPlayer
 
 local THEME = {
@@ -41,6 +43,14 @@ local function Notify(text, duration)
     end)
 end
 
+local function Tween(obj, time, props, style, dir)
+    if not obj or not obj.Parent then return end
+    local info = TweenInfo.new(time or 0.3, style or Enum.EasingStyle.Quart, dir or Enum.EasingDirection.Out)
+    local t = TweenService:Create(obj, info, props)
+    t:Play()
+    return t
+end
+
 local function AddStroke(parent, color, thickness)
     local s = Instance.new("UIStroke")
     s.Color = color or THEME.STROKE
@@ -49,11 +59,12 @@ local function AddStroke(parent, color, thickness)
     return s
 end
 
-local function AddTextStroke(label)
+local function AddTextStroke(label, thickness)
     local s = Instance.new("UIStroke")
     s.Color = Color3.fromRGB(0, 0, 0)
-    s.Thickness = 1.5
+    s.Thickness = thickness or 1
     s.Parent = label
+    return s
 end
 
 -- ============================================================
@@ -71,7 +82,6 @@ local function loadScriptFromURL(url, name)
                 if fn then
                     fn()
                     Notify("OK " .. (name or "script"), 3)
-                    print("[XyqwPiggy] " .. (name or "script") .. " loaded via game:HttpGet")
                     return
                 end
             end
@@ -80,22 +90,14 @@ local function loadScriptFromURL(url, name)
             local r = request({Url = url, Method = "GET"})
             if r and r.Body then
                 local fn = loadstring(r.Body)
-                if fn then
-                    fn()
-                    Notify("OK " .. (name or "script"), 3)
-                    return
-                end
+                if fn then fn(); Notify("OK " .. (name or "script"), 3); return end
             end
         end
         if http_request then
             local r = http_request({Url = url, Method = "GET"})
             if r and r.Body then
                 local fn = loadstring(r.Body)
-                if fn then
-                    fn()
-                    Notify("OK " .. (name or "script"), 3)
-                    return
-                end
+                if fn then fn(); Notify("OK " .. (name or "script"), 3); return end
             end
         end
         error("All methods failed")
@@ -116,9 +118,13 @@ local State = {
     ESPPlayers = false,
     AntiTrap = false,
     AutoAFK = false,
+    DeletePiggy = false,        -- GUI состояние
+    DeletePiggyActive = false,  -- реальное состояние (фон)
     lastScrollMisc = 0,
     miscScrolling = false,
 }
+
+local deletePiggyConn = nil
 
 _G.__XyqwPiggyLastScroll = 0
 _G.__XyqwPiggyScrolling = false
@@ -145,14 +151,118 @@ local function GetPiggyCoins()
                 local cf = cs:FindFirstChild("CashFrame")
                 if cf then
                     local cn = cf:FindFirstChild("CashNumber")
-                    if cn and cn:IsA("TextLabel") then
-                        return cn.Text
-                    end
+                    if cn and cn:IsA("TextLabel") then return cn.Text end
                 end
             end
         end
     end
     return "?"
+end
+
+-- ============================================================
+-- DELETE PIGGY LOGIC
+-- ============================================================
+local function GetPhase()
+    local gf = workspace:FindFirstChild("GameFolder")
+    if not gf then return nil end
+    local p = gf:FindFirstChild("Phase")
+    return p and p.Value or nil
+end
+
+local function IsCameraModel(obj)
+    if obj:IsA("Camera") then return true end
+    if obj:FindFirstChildOfClass("Camera") then return true end
+    local n = obj.Name:lower()
+    if n:find("camera") or n:find("cutscene") or n:find("intro") then return true end
+    local c, d = obj.Parent, 0
+    while c and d < 4 do
+        local pn = c.Name:lower()
+        if pn:find("camera") or pn:find("cutscene") then return true end
+        c = c.Parent; d = d + 1
+    end
+    return false
+end
+
+local function RunDeletePiggyTick()
+    if GetPhase() ~= "GameInProgress" then return end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Model") then
+            if not IsCameraModel(obj) then
+                local hum = obj:FindFirstChildOfClass("Humanoid")
+                if hum and hum.Health > 0 then
+                    local plr = Players:GetPlayerFromCharacter(obj)
+                    if not plr then
+                        pcall(function()
+                            hum.Health = 0
+                            obj.Parent = nil
+                        end)
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function IsCutsceneOver()
+    if GetPhase() ~= "GameInProgress" then return false end
+    local char = LP.Character
+    if not char then return false end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return false end
+    if not char:FindFirstChild("HumanoidRootPart") then return false end
+    local cam = workspace.CurrentCamera
+    if not cam then return false end
+    if cam.CameraSubject ~= hum then return false end
+    local pg = LP:FindFirstChild("PlayerGui")
+    if pg then
+        for _, obj in ipairs(pg:GetChildren()) do
+            local n = obj.Name:lower()
+            if n:find("cutscene") or n:find("cinematic") or n:find("intro") then
+                return false
+            end
+        end
+    end
+    return true
+end
+
+local function EnableDeletePiggy()
+    if deletePiggyConn then return end
+    State.DeletePiggy = true
+    if IsCutsceneOver() then
+        State.DeletePiggyActive = true
+        Notify("Delete Piggy: ACTIVE", 3)
+        print("[XyqwPiggy] Delete Piggy: ACTIVE")
+    else
+        State.DeletePiggyActive = false
+        Notify("Piggy will be deleted after cutscene!", 5)
+        print("[XyqwPiggy] Delete Piggy: ARMED (waiting cutscene)")
+    end
+    deletePiggyConn = RunService.Heartbeat:Connect(function()
+        if not State.DeletePiggy then return end
+        local over = IsCutsceneOver()
+        if over and not State.DeletePiggyActive then
+            State.DeletePiggyActive = true
+            Notify("Delete Piggy: ACTIVE", 3)
+            print("[XyqwPiggy] Delete Piggy: ACTIVATED")
+        elseif not over and State.DeletePiggyActive then
+            State.DeletePiggyActive = false
+            Notify("Piggy will be deleted after cutscene!", 5)
+            print("[XyqwPiggy] Delete Piggy: PAUSED")
+        end
+        if State.DeletePiggyActive then
+            RunDeletePiggyTick()
+        end
+    end)
+end
+
+local function DisableDeletePiggy()
+    State.DeletePiggy = false
+    State.DeletePiggyActive = false
+    if deletePiggyConn then
+        deletePiggyConn:Disconnect()
+        deletePiggyConn = nil
+    end
+    print("[XyqwPiggy] Delete Piggy: OFF")
 end
 
 -- ============================================================
@@ -167,14 +277,13 @@ ScreenGui.DisplayOrder = 999
 pcall(function() ScreenGui.Parent = CoreGui end)
 if not ScreenGui.Parent then ScreenGui.Parent = playerGui end
 
--- DOCK
+-- DOCK (с анимацией ховера)
 local DockBtn = Instance.new("TextButton")
 DockBtn.Size = UDim2.new(0, 110, 0, 38)
 DockBtn.Position = UDim2.new(0.03, 0, 0.15, 0)
 DockBtn.BackgroundColor3 = THEME.BG
 DockBtn.TextColor3 = THEME.MAIN
 DockBtn.Text = "XyqwPiggy"
-DockBtn.TextScaled = false
 DockBtn.TextSize = 16
 DockBtn.Font = Enum.Font.GothamBold
 DockBtn.BorderSizePixel = 0
@@ -182,7 +291,15 @@ DockBtn.Parent = ScreenGui
 DockBtn.AutoButtonColor = false
 DockBtn.ZIndex = 1000
 local DBC = Instance.new("UICorner"); DBC.CornerRadius = UDim.new(0, 12); DBC.Parent = DockBtn
-AddStroke(DockBtn, THEME.MAIN, 2); AddTextStroke(DockBtn)
+local DockStroke = AddStroke(DockBtn, THEME.MAIN, 2)
+AddTextStroke(DockBtn, 1.5)
+
+DockBtn.MouseEnter:Connect(function()
+    Tween(DockStroke, 0.3, { Thickness = 3, Color = Color3.fromRGB(255, 100, 100) })
+end)
+DockBtn.MouseLeave:Connect(function()
+    Tween(DockStroke, 0.3, { Thickness = 2, Color = THEME.MAIN })
+end)
 
 -- MAIN FRAME
 local MainFrame = Instance.new("Frame")
@@ -210,12 +327,11 @@ TitleLabel.Position = UDim2.new(0, 8, 0, 0)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Text = "XyqwPiggy v" .. VERSION
 TitleLabel.TextColor3 = THEME.MAIN
-TitleLabel.TextScaled = false
 TitleLabel.TextSize = 16
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = TitleBar
-AddTextStroke(TitleLabel)
+AddTextStroke(TitleLabel, 1.5)
 
 local MiscBtn = Instance.new("TextButton")
 MiscBtn.Size = UDim2.new(0, 38, 0, 22)
@@ -223,7 +339,6 @@ MiscBtn.Position = UDim2.new(1, -62, 0.5, -11)
 MiscBtn.BackgroundColor3 = THEME.DARK
 MiscBtn.TextColor3 = THEME.MAIN
 MiscBtn.Text = "MISC"
-MiscBtn.TextScaled = false
 MiscBtn.TextSize = 12
 MiscBtn.Font = Enum.Font.GothamBold
 MiscBtn.BorderSizePixel = 1
@@ -231,7 +346,14 @@ MiscBtn.BorderColor3 = THEME.MAIN
 MiscBtn.Parent = TitleBar
 MiscBtn.AutoButtonColor = false
 local MBC = Instance.new("UICorner"); MBC.CornerRadius = UDim.new(0, 5); MBC.Parent = MiscBtn
-AddStroke(MiscBtn); AddTextStroke(MiscBtn)
+AddStroke(MiscBtn); AddTextStroke(MiscBtn, 1)
+
+MiscBtn.MouseEnter:Connect(function()
+    Tween(MiscBtn, 0.25, { BackgroundColor3 = Color3.fromRGB(80, 0, 0) })
+end)
+MiscBtn.MouseLeave:Connect(function()
+    Tween(MiscBtn, 0.25, { BackgroundColor3 = THEME.DARK })
+end)
 
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 22, 0, 22)
@@ -239,7 +361,6 @@ CloseBtn.Position = UDim2.new(1, -24, 0.5, -11)
 CloseBtn.BackgroundColor3 = THEME.DARK
 CloseBtn.TextColor3 = THEME.MAIN
 CloseBtn.Text = "X"
-CloseBtn.TextScaled = false
 CloseBtn.TextSize = 14
 CloseBtn.Font = Enum.Font.GothamBold
 CloseBtn.BorderSizePixel = 1
@@ -247,7 +368,14 @@ CloseBtn.BorderColor3 = THEME.MAIN
 CloseBtn.Parent = TitleBar
 CloseBtn.AutoButtonColor = false
 local CB = Instance.new("UICorner"); CB.CornerRadius = UDim.new(0, 5); CB.Parent = CloseBtn
-AddStroke(CloseBtn); AddTextStroke(CloseBtn)
+AddStroke(CloseBtn); AddTextStroke(CloseBtn, 1)
+
+CloseBtn.MouseEnter:Connect(function()
+    Tween(CloseBtn, 0.25, { BackgroundColor3 = Color3.fromRGB(120, 0, 0), Rotation = 90 })
+end)
+CloseBtn.MouseLeave:Connect(function()
+    Tween(CloseBtn, 0.25, { BackgroundColor3 = THEME.DARK, Rotation = 0 })
+end)
 
 -- BALANCE
 local BalanceFrame = Instance.new("Frame")
@@ -266,12 +394,11 @@ BalanceLabel.Position = UDim2.new(0, 4, 0, 0)
 BalanceLabel.BackgroundTransparency = 1
 BalanceLabel.Text = "Piggy Coins: ..."
 BalanceLabel.TextColor3 = THEME.GOLD
-BalanceLabel.TextScaled = false
 BalanceLabel.TextSize = 14
 BalanceLabel.Font = Enum.Font.GothamBold
 BalanceLabel.TextXAlignment = Enum.TextXAlignment.Left
 BalanceLabel.Parent = BalanceFrame
-AddTextStroke(BalanceLabel)
+AddTextStroke(BalanceLabel, 1.5)
 
 -- SEARCH
 local SearchBar = Instance.new("TextBox")
@@ -289,7 +416,7 @@ SearchBar.BorderSizePixel = 1
 SearchBar.BorderColor3 = THEME.MAIN
 SearchBar.Parent = MainFrame
 local SC = Instance.new("UICorner"); SC.CornerRadius = UDim.new(0, 6); SC.Parent = SearchBar
-AddStroke(SearchBar); AddTextStroke(SearchBar)
+AddStroke(SearchBar); AddTextStroke(SearchBar, 1)
 
 -- ITEM SCROLL
 local ItemScroll = Instance.new("ScrollingFrame")
@@ -320,14 +447,13 @@ InfoLabel.Position = UDim2.new(0, 8, 1, -46)
 InfoLabel.BackgroundColor3 = THEME.DARK
 InfoLabel.TextColor3 = THEME.MAIN
 InfoLabel.Text = "0 items"
-InfoLabel.TextScaled = false
 InfoLabel.TextSize = 13
 InfoLabel.Font = Enum.Font.GothamBold
 InfoLabel.BorderSizePixel = 1
 InfoLabel.BorderColor3 = THEME.MAIN
 InfoLabel.Parent = MainFrame
 local IC = Instance.new("UICorner"); IC.CornerRadius = UDim.new(0, 5); IC.Parent = InfoLabel
-AddStroke(InfoLabel); AddTextStroke(InfoLabel)
+AddStroke(InfoLabel); AddTextStroke(InfoLabel, 1)
 
 -- BOTTOM BUTTONS
 local BtnFrame = Instance.new("Frame")
@@ -343,7 +469,6 @@ local function MakeBtn(name, x, w)
     btn.BackgroundColor3 = THEME.DARK
     btn.TextColor3 = THEME.MAIN
     btn.Text = name
-    btn.TextScaled = false
     btn.TextSize = 13
     btn.Font = Enum.Font.GothamBold
     btn.BorderSizePixel = 1
@@ -351,7 +476,15 @@ local function MakeBtn(name, x, w)
     btn.Parent = BtnFrame
     btn.AutoButtonColor = false
     local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 6); bc.Parent = btn
-    AddStroke(btn); AddTextStroke(btn)
+    AddStroke(btn); AddTextStroke(btn, 1)
+
+    btn.MouseEnter:Connect(function()
+        Tween(btn, 0.25, { BackgroundColor3 = Color3.fromRGB(80, 0, 0), BorderColor3 = Color3.fromRGB(255, 100, 100) })
+    end)
+    btn.MouseLeave:Connect(function()
+        Tween(btn, 0.25, { BackgroundColor3 = THEME.DARK, BorderColor3 = THEME.MAIN })
+    end)
+
     return btn
 end
 
@@ -363,8 +496,8 @@ local ResetBtn = MakeBtn("Reset", 0.75, 0.24)
 -- MISC FRAME
 local MiscFrame = Instance.new("Frame")
 MiscFrame.Name = "MiscFrame"
-MiscFrame.Size = UDim2.new(0, 230, 0, 320)
-MiscFrame.Position = UDim2.new(0.5, 220, 0.5, -160)
+MiscFrame.Size = UDim2.new(0, 230, 0, 340)
+MiscFrame.Position = UDim2.new(0.5, 220, 0.5, -170)
 MiscFrame.BackgroundColor3 = THEME.BG
 MiscFrame.BorderSizePixel = 3
 MiscFrame.BorderColor3 = THEME.MAIN
@@ -387,12 +520,11 @@ MiscTitle.Position = UDim2.new(0, 8, 0, 0)
 MiscTitle.BackgroundTransparency = 1
 MiscTitle.Text = "Misc"
 MiscTitle.TextColor3 = THEME.MAIN
-MiscTitle.TextScaled = false
 MiscTitle.TextSize = 14
 MiscTitle.Font = Enum.Font.GothamBold
 MiscTitle.TextXAlignment = Enum.TextXAlignment.Left
 MiscTitle.Parent = MiscTitleBar
-AddTextStroke(MiscTitle)
+AddTextStroke(MiscTitle, 1.5)
 
 local MiscClose = Instance.new("TextButton")
 MiscClose.Size = UDim2.new(0, 20, 0, 20)
@@ -400,7 +532,6 @@ MiscClose.Position = UDim2.new(1, -24, 0.5, -10)
 MiscClose.BackgroundColor3 = THEME.DARK
 MiscClose.TextColor3 = THEME.MAIN
 MiscClose.Text = "X"
-MiscClose.TextScaled = false
 MiscClose.TextSize = 12
 MiscClose.Font = Enum.Font.GothamBold
 MiscClose.BorderSizePixel = 1
@@ -408,7 +539,7 @@ MiscClose.BorderColor3 = THEME.MAIN
 MiscClose.Parent = MiscTitleBar
 MiscClose.AutoButtonColor = false
 local MCC = Instance.new("UICorner"); MCC.CornerRadius = UDim.new(0, 5); MCC.Parent = MiscClose
-AddStroke(MiscClose); AddTextStroke(MiscClose)
+AddStroke(MiscClose); AddTextStroke(MiscClose, 1)
 
 local MiscScroll = Instance.new("ScrollingFrame")
 MiscScroll.Name = "MiscScroll"
@@ -445,7 +576,7 @@ MiscScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
     end)
 end)
 
--- MAKE TOGGLE
+-- MAKE TOGGLE (с анимацией ховера)
 local function MakeToggle(name, getState, onToggle)
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1, -4, 0, 28)
@@ -454,7 +585,7 @@ local function MakeToggle(name, getState, onToggle)
     row.BorderColor3 = THEME.MAIN
     row.Parent = MiscScroll
     local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(0, 6); rc.Parent = row
-    AddStroke(row)
+    local rowStroke = AddStroke(row)
 
     local lbl = Instance.new("TextLabel")
     lbl.Size = UDim2.new(1, -40, 1, 0)
@@ -462,12 +593,11 @@ local function MakeToggle(name, getState, onToggle)
     lbl.BackgroundTransparency = 1
     lbl.Text = name
     lbl.TextColor3 = THEME.MAIN
-    lbl.TextScaled = false
     lbl.TextSize = 14
     lbl.Font = Enum.Font.GothamBold
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.Parent = row
-    AddTextStroke(lbl)
+    AddTextStroke(lbl, 1)
 
     local box = Instance.new("TextButton")
     box.Size = UDim2.new(0, 18, 0, 18)
@@ -482,7 +612,20 @@ local function MakeToggle(name, getState, onToggle)
     local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 4); bc.Parent = box
     AddStroke(box)
 
-    local function U() box.BackgroundColor3 = getState() and THEME.ON or THEME.OFF end
+    -- Анимация ховера на строке
+    row.MouseEnter:Connect(function()
+        Tween(row, 0.3, { BackgroundColor3 = Color3.fromRGB(70, 0, 0) })
+        Tween(rowStroke, 0.3, { Color = Color3.fromRGB(255, 100, 100), Thickness = 2 })
+    end)
+    row.MouseLeave:Connect(function()
+        Tween(row, 0.3, { BackgroundColor3 = THEME.DARK })
+        Tween(rowStroke, 0.3, { Color = THEME.MAIN, Thickness = 1 })
+    end)
+
+    local function U()
+        local target = getState() and THEME.ON or THEME.OFF
+        Tween(box, 0.3, { BackgroundColor3 = target })
+    end
     local function fire()
         onToggle(); U()
         Notify(name .. ": " .. (getState() and "ON" or "OFF"), 2)
@@ -524,22 +667,32 @@ local function MakeToggle(name, getState, onToggle)
     end)
 end
 
--- MAKE MISC BUTTON
+-- MAKE MISC BTN (тонкий текст + анимация)
 local function MakeMiscBtn(name, color, onClick)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, -4, 0, 34)
+    btn.Size = UDim2.new(1, -4, 0, 32)
     btn.BackgroundColor3 = THEME.DARK
     btn.TextColor3 = color
     btn.Text = name
-    btn.TextScaled = false
-    btn.TextSize = 14
-    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 13                              -- было 14
+    btn.Font = Enum.Font.Gotham                    -- было GothamBold (жирный)
     btn.BorderSizePixel = 2
     btn.BorderColor3 = color
     btn.Parent = MiscScroll
     btn.AutoButtonColor = false
     local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 6); bc.Parent = btn
-    AddStroke(btn, color, 2); AddTextStroke(btn)
+    local btnStroke = AddStroke(btn, color, 1.5)   -- было 2
+    AddTextStroke(btn, 1)                          -- было 1.5
+
+    -- Анимация ховера
+    btn.MouseEnter:Connect(function()
+        Tween(btn, 0.3, { BackgroundColor3 = Color3.fromRGB(80, 80, 20) })
+        Tween(btnStroke, 0.3, { Thickness = 2.5 })
+    end)
+    btn.MouseLeave:Connect(function()
+        Tween(btn, 0.3, { BackgroundColor3 = THEME.DARK })
+        Tween(btnStroke, 0.3, { Thickness = 1.5 })
+    end)
 
     local pressStart, pressPos, moved, tracking = 0, nil, false, false
     btn.InputBegan:Connect(function(input)
@@ -569,6 +722,9 @@ local function MakeMiscBtn(name, color, onClick)
 end
 
 -- TOGGLES
+MakeToggle("Delete Piggy", function() return State.DeletePiggy end, function()
+    if State.DeletePiggy then DisableDeletePiggy() else EnableDeletePiggy() end
+end)
 MakeToggle("ESP Items", function() return State.ESPItems end, function() State.ESPItems = not State.ESPItems end)
 MakeToggle("ESP Monster", function() return State.ESPMonster end, function() State.ESPMonster = not State.ESPMonster end)
 MakeToggle("ESP Players", function() return State.ESPPlayers end, function() State.ESPPlayers = not State.ESPPlayers end)
@@ -576,7 +732,7 @@ MakeToggle("Anti-Trap", function() return State.AntiTrap end, function() State.A
 MakeToggle("Auto-AFK", function() return State.AutoAFK end, function() State.AutoAFK = not State.AutoAFK end)
 
 -- ============================================================
--- MODULE BUTTONS
+-- MODULE BUTTONS (читаемый текст)
 -- ============================================================
 local AUTOFARM_URL = "https://cdn.jsdelivr.net/gh/Xyqwerq/XyqwPiggy@main/XyqwAutoFarm.lua"
 local SKINCHANGER_URL = "https://cdn.jsdelivr.net/gh/Xyqwerq/XyqwSkinChanger-Piggy@main/main.lua"
@@ -932,7 +1088,18 @@ function _G.__RefreshItemList()
             row.ClipsDescendants = false
             row:SetAttribute("ItemKey", item.key)
             local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(0, 6); rc.Parent = row
-            AddStroke(row, THEME.STROKE, 1.5)
+            local rowSt = AddStroke(row, THEME.STROKE, 1.5)
+
+            -- Ховер на строке предмета
+            row.MouseEnter:Connect(function()
+                Tween(row, 0.3, { BackgroundColor3 = Color3.fromRGB(70, 0, 0) })
+                Tween(rowSt, 0.3, { Color = THEME.MAIN, Thickness = 2 })
+            end)
+            row.MouseLeave:Connect(function()
+                Tween(row, 0.3, { BackgroundColor3 = THEME.DARK })
+                Tween(rowSt, 0.3, { Color = THEME.STROKE, Thickness = 1.5 })
+            end)
+
             local vpf = Instance.new("ViewportFrame")
             vpf.Size = UDim2.new(0, 44, 0, 44)
             vpf.Position = UDim2.new(0, 3, 0.5, -22)
@@ -955,13 +1122,12 @@ function _G.__RefreshItemList()
             nl.BackgroundTransparency = 1
             nl.Text = itemName
             nl.TextColor3 = THEME.MAIN
-            nl.TextScaled = false
             nl.TextSize = 13
             nl.Font = Enum.Font.GothamBold
             nl.TextXAlignment = Enum.TextXAlignment.Left
             nl.TextTruncate = Enum.TextTruncate.AtEnd
             nl.Parent = row
-            AddTextStroke(nl)
+            AddTextStroke(nl, 1)
             local catcher = Instance.new("TextButton")
             catcher.Size = UDim2.new(1, 0, 1, 0)
             catcher.BackgroundTransparency = 1
@@ -1165,10 +1331,9 @@ task.spawn(function()
     while true do
         if State.AutoAFK then
             pcall(function()
-                if VirtualUser then
-                    VirtualUser:CaptureController()
-                    VirtualUser:ClickButton1(Vector2.new(500, 500))
-                end
+                local VU = game:GetService("VirtualUser")
+                VU:CaptureController()
+                VU:ClickButton1(Vector2.new(500, 500))
             end)
         end
         task.wait(60)
