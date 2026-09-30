@@ -1,13 +1,14 @@
-print("[XyqwPiggy] Loading v7.8...")
+print("[XyqwPiggy] Loading v7.9...")
 
 local _ok, _err = pcall(function()
 
 -- ============================================================
--- XyqwPiggy v7.8
--- + Black-red stroke, ALL MESSAGES IN ENGLISH, save position
+-- XyqwPiggy v7.9
+-- + Simple fonts, red GUI stroke, pink warning stroke,
+--   Destroy button in Misc, Yes/No reset dialog
 -- ============================================================
 
-local VERSION = "7.8"
+local VERSION = "7.9"
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
@@ -31,8 +32,9 @@ local THEME = {
     CYAN   = Color3.fromRGB(0, 220, 255),
     PINK   = Color3.fromRGB(255, 100, 200),
     GREEN  = Color3.fromRGB(0, 255, 100),
-    BLACK  = Color3.fromRGB(0, 0, 0),
 }
+
+local FONT = Enum.Font.Gotham  -- обычный шрифт
 
 local function Notify(text, duration)
     duration = duration or 2
@@ -57,24 +59,6 @@ local function AddStroke(parent, color, thickness)
     s.Thickness = thickness or 1
     s.Parent = parent
     return s
-end
-
--- ============================================================
--- BLACK-RED DOUBLE STROKE
--- ============================================================
-local function AddBlackRedStroke(parent, innerThickness)
-    innerThickness = innerThickness or 2
-    -- Внутренняя красная
-    local inner = Instance.new("UIStroke")
-    inner.Color = THEME.MAIN
-    inner.Thickness = innerThickness
-    inner.Parent = parent
-    -- Внешняя чёрная
-    local outer = Instance.new("UIStroke")
-    outer.Color = THEME.BLACK
-    outer.Thickness = innerThickness + 2
-    outer.Parent = parent
-    return inner, outer
 end
 
 -- ============================================================
@@ -147,6 +131,7 @@ local State = {
     miscScrolling = false,
     mainOpen = false,
     miscOpen = false,
+    destroyed = false,
 }
 
 local deletePiggyConn = nil
@@ -155,13 +140,13 @@ _G.__XyqwPiggyLastScroll = 0
 _G.__XyqwPiggyScrolling = false
 
 for _, obj in ipairs(CoreGui:GetChildren()) do
-    if obj.Name == "XyqwPiggy" or obj.Name == "XyqwPiggyESP" then
+    if obj.Name == "XyqwPiggy" or obj.Name == "XyqwPiggyESP" or obj.Name == "XyqwWarn" then
         pcall(function() obj:Destroy() end)
     end
 end
 local playerGui = LP:WaitForChild("PlayerGui")
 for _, obj in ipairs(playerGui:GetChildren()) do
-    if obj.Name == "XyqwPiggy" or obj.Name == "XyqwPiggyESP" then
+    if obj.Name == "XyqwPiggy" or obj.Name == "XyqwPiggyESP" or obj.Name == "XyqwWarn" then
         pcall(function() obj:Destroy() end)
     end
 end
@@ -185,7 +170,7 @@ local function GetPiggyCoins()
 end
 
 -- ============================================================
--- DELETE PIGGY
+-- DELETE PIGGY LOGIC
 -- ============================================================
 local function GetPhase()
     local gf = workspace:FindFirstChild("GameFolder")
@@ -300,7 +285,7 @@ DockBtn.BackgroundColor3 = THEME.BG
 DockBtn.TextColor3 = THEME.MAIN
 DockBtn.Text = "XyqwPiggy"
 DockBtn.TextSize = 15
-DockBtn.Font = Enum.Font.Gotham
+DockBtn.Font = FONT
 DockBtn.BorderSizePixel = 0
 DockBtn.Parent = ScreenGui
 DockBtn.AutoButtonColor = false
@@ -318,9 +303,9 @@ DockBtn.MouseLeave:Connect(function()
 end)
 
 -- ============================================================
--- MAIN FRAME — по центру экрана
+-- MAIN FRAME — центр экрана, красная обводка
 -- ============================================================
-local MAIN_DEFAULT_POS = UDim2.new(0.5, -140, 0.5, -170)  -- центр для 280×340
+local MAIN_DEFAULT_POS = UDim2.new(0.5, -140, 0.5, -170)
 local savedMainPos = MAIN_DEFAULT_POS
 
 local MainFrame = Instance.new("Frame")
@@ -334,29 +319,28 @@ MainFrame.BackgroundTransparency = 1
 MainFrame.Parent = ScreenGui
 local MC = Instance.new("UICorner"); MC.CornerRadius = UDim.new(0, 10); MC.Parent = MainFrame
 
--- Чёрно-красная двойная обводка
-local MainStrokeInner, MainStrokeOuter = AddBlackRedStroke(MainFrame, 2)
-MainStrokeInner.Transparency = 1
-MainStrokeOuter.Transparency = 1
+-- Красная обводка
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Color = THEME.MAIN
+MainStroke.Thickness = 3
+MainStroke.Transparency = 1
+MainStroke.Parent = MainFrame
 
 local function OpenMain()
     if State.mainOpen then return end
     State.mainOpen = true
     MainFrame.Visible = true
     MainFrame.BackgroundTransparency = 1
-    MainStrokeInner.Transparency = 1
-    MainStrokeOuter.Transparency = 1
+    MainStroke.Transparency = 1
     MainFrame.Position = UDim2.new(
         savedMainPos.X.Scale, savedMainPos.X.Offset,
         savedMainPos.Y.Scale, savedMainPos.Y.Offset - 40
     )
-
     Tween(MainFrame, 0.4, {
         BackgroundTransparency = 0,
         Position = savedMainPos
     }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-    Tween(MainStrokeInner, 0.4, { Transparency = 0 }, Enum.EasingStyle.Quart)
-    Tween(MainStrokeOuter, 0.4, { Transparency = 0 }, Enum.EasingStyle.Quart)
+    Tween(MainStroke, 0.4, { Transparency = 0 }, Enum.EasingStyle.Quart)
 end
 
 local function CloseMain()
@@ -369,11 +353,8 @@ local function CloseMain()
             savedMainPos.Y.Scale, savedMainPos.Y.Offset - 40
         )
     }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-    Tween(MainStrokeInner, 0.3, { Transparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-    Tween(MainStrokeOuter, 0.3, { Transparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-    task.delay(0.32, function()
-        MainFrame.Visible = false
-    end)
+    Tween(MainStroke, 0.3, { Transparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+    task.delay(0.32, function() MainFrame.Visible = false end)
 end
 
 -- TITLE
@@ -391,7 +372,7 @@ TitleLabel.BackgroundTransparency = 1
 TitleLabel.Text = "XyqwPiggy v" .. VERSION
 TitleLabel.TextColor3 = THEME.MAIN
 TitleLabel.TextSize = 15
-TitleLabel.Font = Enum.Font.Gotham
+TitleLabel.Font = FONT
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = TitleBar
 
@@ -402,7 +383,7 @@ MiscBtn.BackgroundColor3 = THEME.DARK
 MiscBtn.TextColor3 = THEME.MAIN
 MiscBtn.Text = "MISC"
 MiscBtn.TextSize = 12
-MiscBtn.Font = Enum.Font.Gotham
+MiscBtn.Font = FONT
 MiscBtn.BorderSizePixel = 1
 MiscBtn.BorderColor3 = THEME.MAIN
 MiscBtn.Parent = TitleBar
@@ -424,7 +405,7 @@ CloseBtn.BackgroundColor3 = THEME.DARK
 CloseBtn.TextColor3 = THEME.MAIN
 CloseBtn.Text = "X"
 CloseBtn.TextSize = 14
-CloseBtn.Font = Enum.Font.Gotham
+CloseBtn.Font = FONT
 CloseBtn.BorderSizePixel = 1
 CloseBtn.BorderColor3 = THEME.MAIN
 CloseBtn.Parent = TitleBar
@@ -457,7 +438,7 @@ BalanceLabel.BackgroundTransparency = 1
 BalanceLabel.Text = "Piggy Coins: ..."
 BalanceLabel.TextColor3 = THEME.GOLD
 BalanceLabel.TextSize = 14
-BalanceLabel.Font = Enum.Font.Gotham
+BalanceLabel.Font = FONT
 BalanceLabel.TextXAlignment = Enum.TextXAlignment.Left
 BalanceLabel.Parent = BalanceFrame
 
@@ -471,7 +452,7 @@ SearchBar.PlaceholderColor3 = THEME.SUB
 SearchBar.Text = ""
 SearchBar.TextColor3 = THEME.MAIN
 SearchBar.TextSize = 13
-SearchBar.Font = Enum.Font.Gotham
+SearchBar.Font = FONT
 SearchBar.ClearTextOnFocus = false
 SearchBar.BorderSizePixel = 1
 SearchBar.BorderColor3 = THEME.MAIN
@@ -509,14 +490,14 @@ InfoLabel.BackgroundColor3 = THEME.DARK
 InfoLabel.TextColor3 = THEME.MAIN
 InfoLabel.Text = "0 items"
 InfoLabel.TextSize = 13
-InfoLabel.Font = Enum.Font.Gotham
+InfoLabel.Font = FONT
 InfoLabel.BorderSizePixel = 1
 InfoLabel.BorderColor3 = THEME.MAIN
 InfoLabel.Parent = MainFrame
 local IC = Instance.new("UICorner"); IC.CornerRadius = UDim.new(0, 5); IC.Parent = InfoLabel
 AddStroke(InfoLabel)
 
--- BOTTOM BUTTONS
+-- BOTTOM BUTTONS (только Scan и Reset)
 local BtnFrame = Instance.new("Frame")
 BtnFrame.Size = UDim2.new(1, -16, 0, 38)
 BtnFrame.Position = UDim2.new(0, 8, 1, -46)
@@ -531,7 +512,7 @@ local function MakeBtn(name, x, w)
     btn.TextColor3 = THEME.MAIN
     btn.Text = name
     btn.TextSize = 13
-    btn.Font = Enum.Font.Gotham
+    btn.Font = FONT
     btn.BorderSizePixel = 1
     btn.BorderColor3 = THEME.MAIN
     btn.Parent = BtnFrame
@@ -551,20 +532,19 @@ local function MakeBtn(name, x, w)
     return btn
 end
 
-local ScanBtn = MakeBtn("Scan", 0, 0.24)
-local OpenGameBtn = MakeBtn("Menu", 0.25, 0.24)
-local RefreshBalBtn = MakeBtn("Balance", 0.50, 0.24)
-local ResetBtn = MakeBtn("Reset", 0.75, 0.24)
+-- 2 кнопки внизу: Scan (слева) и Reset (справа)
+local ScanBtn = MakeBtn("Scan", 0, 0.49)
+local ResetBtn = MakeBtn("Reset", 0.51, 0.49)
 
 -- ============================================================
--- MISC FRAME
+-- MISC FRAME — красная обводка
 -- ============================================================
 local MISC_DEFAULT_POS = UDim2.new(0.5, 148, 0.5, -170)
 local savedMiscPos = MISC_DEFAULT_POS
 
 local MiscFrame = Instance.new("Frame")
 MiscFrame.Name = "MiscFrame"
-MiscFrame.Size = UDim2.new(0, 230, 0, 340)
+MiscFrame.Size = UDim2.new(0, 230, 0, 380)
 MiscFrame.Position = MISC_DEFAULT_POS
 MiscFrame.BackgroundColor3 = THEME.BG
 MiscFrame.BorderSizePixel = 0
@@ -575,28 +555,28 @@ MiscFrame.Parent = ScreenGui
 MiscFrame.ZIndex = 10
 local MFC = Instance.new("UICorner"); MFC.CornerRadius = UDim.new(0, 10); MFC.Parent = MiscFrame
 
-local MiscStrokeInner, MiscStrokeOuter = AddBlackRedStroke(MiscFrame, 2)
-MiscStrokeInner.Transparency = 1
-MiscStrokeOuter.Transparency = 1
+-- Красная обводка
+local MiscStroke = Instance.new("UIStroke")
+MiscStroke.Color = THEME.MAIN
+MiscStroke.Thickness = 3
+MiscStroke.Transparency = 1
+MiscStroke.Parent = MiscFrame
 
 local function OpenMisc()
     if State.miscOpen then return end
     State.miscOpen = true
     MiscFrame.Visible = true
     MiscFrame.BackgroundTransparency = 1
-    MiscStrokeInner.Transparency = 1
-    MiscStrokeOuter.Transparency = 1
+    MiscStroke.Transparency = 1
     MiscFrame.Position = UDim2.new(
         savedMiscPos.X.Scale, savedMiscPos.X.Offset,
         savedMiscPos.Y.Scale, savedMiscPos.Y.Offset - 40
     )
-
     Tween(MiscFrame, 0.4, {
         BackgroundTransparency = 0,
         Position = savedMiscPos
     }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-    Tween(MiscStrokeInner, 0.4, { Transparency = 0 }, Enum.EasingStyle.Quart)
-    Tween(MiscStrokeOuter, 0.4, { Transparency = 0 }, Enum.EasingStyle.Quart)
+    Tween(MiscStroke, 0.4, { Transparency = 0 }, Enum.EasingStyle.Quart)
 end
 
 local function CloseMisc()
@@ -609,11 +589,8 @@ local function CloseMisc()
             savedMiscPos.Y.Scale, savedMiscPos.Y.Offset - 40
         )
     }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-    Tween(MiscStrokeInner, 0.3, { Transparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-    Tween(MiscStrokeOuter, 0.3, { Transparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-    task.delay(0.32, function()
-        MiscFrame.Visible = false
-    end)
+    Tween(MiscStroke, 0.3, { Transparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+    task.delay(0.32, function() MiscFrame.Visible = false end)
 end
 
 local MiscTitleBar = Instance.new("Frame")
@@ -630,7 +607,7 @@ MiscTitle.BackgroundTransparency = 1
 MiscTitle.Text = "Misc"
 MiscTitle.TextColor3 = THEME.MAIN
 MiscTitle.TextSize = 14
-MiscTitle.Font = Enum.Font.Gotham
+MiscTitle.Font = FONT
 MiscTitle.TextXAlignment = Enum.TextXAlignment.Left
 MiscTitle.Parent = MiscTitleBar
 
@@ -641,7 +618,7 @@ MiscClose.BackgroundColor3 = THEME.DARK
 MiscClose.TextColor3 = THEME.MAIN
 MiscClose.Text = "X"
 MiscClose.TextSize = 12
-MiscClose.Font = Enum.Font.Gotham
+MiscClose.Font = FONT
 MiscClose.BorderSizePixel = 1
 MiscClose.BorderColor3 = THEME.MAIN
 MiscClose.Parent = MiscTitleBar
@@ -708,7 +685,7 @@ local function MakeToggle(name, getState, onToggle)
     lbl.Text = name
     lbl.TextColor3 = THEME.MAIN
     lbl.TextSize = 14
-    lbl.Font = Enum.Font.Gotham
+    lbl.Font = FONT
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.Parent = row
 
@@ -789,7 +766,7 @@ local function MakeModuleBtn(name, textColor, onClick)
     btn.TextColor3 = textColor
     btn.Text = name
     btn.TextSize = 14
-    btn.Font = Enum.Font.Gotham
+    btn.Font = FONT
     btn.BorderSizePixel = 2
     btn.BorderColor3 = textColor
     btn.Parent = MiscScroll
@@ -840,6 +817,66 @@ local function MakeModuleBtn(name, textColor, onClick)
     end)
 end
 
+-- ============================================================
+-- MAKE MISC ACTION BTN (для Destroy)
+-- ============================================================
+local function MakeMiscBtn(name, color, onClick)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -4, 0, 32)
+    btn.BackgroundColor3 = THEME.DARK
+    btn.TextColor3 = color
+    btn.Text = name
+    btn.TextSize = 14
+    btn.Font = FONT
+    btn.BorderSizePixel = 2
+    btn.BorderColor3 = color
+    btn.Parent = MiscScroll
+    btn.AutoButtonColor = false
+    local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 6); bc.Parent = btn
+    local btnStroke = AddStroke(btn, color, 1.5)
+
+    btn.MouseEnter:Connect(function()
+        Tween(btn, 0.3, {
+            BackgroundColor3 = Color3.fromRGB(
+                math.floor(color.R * 0.3 * 255),
+                math.floor(color.G * 0.3 * 255),
+                math.floor(color.B * 0.3 * 255)
+            )
+        })
+        Tween(btnStroke, 0.3, { Thickness = 3 })
+    end)
+    btn.MouseLeave:Connect(function()
+        Tween(btn, 0.3, { BackgroundColor3 = THEME.DARK })
+        Tween(btnStroke, 0.3, { Thickness = 1.5 })
+    end)
+
+    local pressStart, pressPos, moved, tracking = 0, nil, false, false
+    btn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            pressStart = tick(); pressPos = input.Position; moved = false; tracking = true
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if tracking and pressPos and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            if (input.Position - pressPos).Magnitude > 8 then moved = true end
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if not tracking then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            tracking = false
+            local held = tick() - pressStart
+            if not moved and held < 0.4 and (tick() - State.lastScrollMisc) > 0.4 and not State.miscScrolling then
+                local mp = input.Position
+                local cp, cs = btn.AbsolutePosition, btn.AbsoluteSize
+                if mp.X >= cp.X and mp.X <= cp.X + cs.X and mp.Y >= cp.Y and mp.Y <= cp.Y + cs.Y then
+                    onClick()
+                end
+            end
+        end
+    end)
+end
+
 -- TOGGLES
 MakeToggle("Delete Piggy", function() return State.DeletePiggy end, function()
     if State.DeletePiggy then DisableDeletePiggy() else EnableDeletePiggy() end
@@ -851,7 +888,45 @@ MakeToggle("Anti-Trap", function() return State.AntiTrap end, function() State.A
 MakeToggle("Auto-AFK", function() return State.AutoAFK end, function() State.AutoAFK = not State.AutoAFK end)
 
 -- ============================================================
--- WARNING POPUP (ALL ENGLISH)
+-- DESTROY FUNCTION
+-- ============================================================
+local function DestroyXyqwPiggy()
+    if State.destroyed then return end
+    State.destroyed = true
+    State.DeletePiggy = false
+    State.DeletePiggyActive = false
+    State.AntiTrap = false
+    State.ESPItems = false
+    State.ESPMonster = false
+    State.ESPPlayers = false
+    if deletePiggyConn then
+        pcall(function() deletePiggyConn:Disconnect() end)
+        deletePiggyConn = nil
+    end
+    -- Удаляем все ESP
+    pcall(function()
+        for _, hl in pairs(ESP.Items) do if hl then hl:Destroy() end end
+        for _, hl in pairs(ESP.Monster) do if hl then hl:Destroy() end end
+        for _, hl in pairs(ESP.Players) do if hl then hl:Destroy() end end
+    end)
+    ESP.Items = {}
+    ESP.Monster = {}
+    ESP.Players = {}
+    pcall(function() ESPFolder:Destroy() end)
+    pcall(function() ScreenGui:Destroy() end)
+    pcall(function() WarnGui:Destroy() end)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = "XyqwPiggy",
+            Text = "Destroyed. Reload script to restore.",
+            Duration = 4
+        })
+    end)
+    print("[XyqwPiggy] Destroyed by user")
+end
+
+-- ============================================================
+-- WARNING POPUP (розовая обводка)
 -- ============================================================
 local WarnGui = Instance.new("ScreenGui")
 WarnGui.Name = "XyqwWarn"
@@ -880,15 +955,16 @@ local function ShowAutoFarmWarning(onConfirm)
     box.BackgroundTransparency = 1
     box.Parent = overlay
     local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 12); bc.Parent = box
-    -- Чёрно-красная двойная обводка для warning
-    local wInner, wOuter = AddBlackRedStroke(box, 2)
-    wInner.Color = THEME.PINK
-    wInner.Transparency = 1
-    wOuter.Transparency = 1
+
+    -- Розовая обводка
+    local boxStroke = Instance.new("UIStroke")
+    boxStroke.Color = THEME.PINK
+    boxStroke.Thickness = 3
+    boxStroke.Transparency = 1
+    boxStroke.Parent = box
 
     Tween(box, 0.4, { BackgroundTransparency = 0, Position = UDim2.new(0.5, -180, 0.5, -120) }, Enum.EasingStyle.Back)
-    Tween(wInner, 0.4, { Transparency = 0 }, Enum.EasingStyle.Quart)
-    Tween(wOuter, 0.4, { Transparency = 0 }, Enum.EasingStyle.Quart)
+    Tween(boxStroke, 0.4, { Transparency = 0 }, Enum.EasingStyle.Quart)
 
     -- Title
     local title = Instance.new("TextLabel")
@@ -898,11 +974,11 @@ local function ShowAutoFarmWarning(onConfirm)
     title.Text = "XyqwAutoFarm"
     title.TextColor3 = THEME.PINK
     title.TextSize = 20
-    title.Font = Enum.Font.Gotham
+    title.Font = FONT
     title.TextXAlignment = Enum.TextXAlignment.Center
     title.Parent = box
 
-    -- Info line 1
+    -- Line 1
     local line1 = Instance.new("TextLabel")
     line1.Size = UDim2.new(1, -20, 0, 22)
     line1.Position = UDim2.new(0, 10, 0, 50)
@@ -910,11 +986,10 @@ local function ShowAutoFarmWarning(onConfirm)
     line1.Text = "This script works only on your private server!"
     line1.TextColor3 = Color3.fromRGB(230, 230, 230)
     line1.TextSize = 13
-    line1.Font = Enum.Font.Gotham
+    line1.Font = FONT
     line1.TextWrapped = true
     line1.Parent = box
 
-    -- Info line 2
     local line2 = Instance.new("TextLabel")
     line2.Size = UDim2.new(1, -20, 0, 18)
     line2.Position = UDim2.new(0, 10, 0, 74)
@@ -922,7 +997,7 @@ local function ShowAutoFarmWarning(onConfirm)
     line2.Text = "(You must be the host)"
     line2.TextColor3 = Color3.fromRGB(180, 180, 180)
     line2.TextSize = 12
-    line2.Font = Enum.Font.Gotham
+    line2.Font = FONT
     line2.Parent = box
 
     -- Status
@@ -935,13 +1010,15 @@ local function ShowAutoFarmWarning(onConfirm)
         and "You are on a private server"
         or  "You are NOT on a private server!\nLaunch blocked!"
     status.TextSize = 13
-    status.Font = Enum.Font.Gotham
+    status.Font = FONT
     status.TextWrapped = true
     status.BorderSizePixel = 0
     status.Parent = box
     local sc = Instance.new("UICorner"); sc.CornerRadius = UDim.new(0, 6); sc.Parent = status
-    local sInner, sOuter = AddBlackRedStroke(status, 1.5)
-    sInner.Color = vip and THEME.GREEN or THEME.OFF
+    local sStroke = Instance.new("UIStroke")
+    sStroke.Color = vip and THEME.GREEN or THEME.OFF
+    sStroke.Thickness = 1.5
+    sStroke.Parent = status
 
     -- Buttons
     local btnY = 174
@@ -952,12 +1029,12 @@ local function ShowAutoFarmWarning(onConfirm)
     cancelBtn.TextColor3 = THEME.MAIN
     cancelBtn.Text = "Cancel"
     cancelBtn.TextSize = 14
-    cancelBtn.Font = Enum.Font.Gotham
+    cancelBtn.Font = FONT
     cancelBtn.BorderSizePixel = 0
     cancelBtn.Parent = box
     cancelBtn.AutoButtonColor = false
     local cbc = Instance.new("UICorner"); cbc.CornerRadius = UDim.new(0, 8); cbc.Parent = cancelBtn
-    local cbInner, cbOuter = AddBlackRedStroke(cancelBtn, 1.5)
+    local cbStroke = Instance.new("UIStroke"); cbStroke.Color = THEME.MAIN; cbStroke.Thickness = 1.5; cbStroke.Parent = cancelBtn
 
     local okBtn = Instance.new("TextButton")
     okBtn.Size = UDim2.new(0, 160, 0, 42)
@@ -966,22 +1043,23 @@ local function ShowAutoFarmWarning(onConfirm)
     okBtn.TextColor3 = vip and THEME.GREEN or Color3.fromRGB(120, 120, 120)
     okBtn.Text = vip and "Launch" or "Blocked"
     okBtn.TextSize = 14
-    okBtn.Font = Enum.Font.Gotham
+    okBtn.Font = FONT
     okBtn.BorderSizePixel = 0
     okBtn.Parent = box
     okBtn.AutoButtonColor = false
     okBtn.Active = vip
     local obc = Instance.new("UICorner"); obc.CornerRadius = UDim.new(0, 8); obc.Parent = okBtn
-    local obInner, obOuter = AddBlackRedStroke(okBtn, 1.5)
-    obInner.Color = vip and THEME.GREEN or Color3.fromRGB(80, 0, 0)
+    local obStroke = Instance.new("UIStroke")
+    obStroke.Color = vip and THEME.GREEN or Color3.fromRGB(80, 0, 0)
+    obStroke.Thickness = 1.5
+    obStroke.Parent = okBtn
 
     local function close()
         Tween(box, 0.25, {
             BackgroundTransparency = 1,
             Position = UDim2.new(0.5, -180, 0.5, -150)
         }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-        Tween(wInner, 0.25, { Transparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-        Tween(wOuter, 0.25, { Transparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+        Tween(boxStroke, 0.25, { Transparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
         Tween(overlay, 0.25, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
         task.delay(0.3, function()
             pcall(function() overlay:Destroy() end)
@@ -1015,6 +1093,114 @@ local function ShowAutoFarmWarning(onConfirm)
 end
 
 -- ============================================================
+-- RESET DIALOG (Yes/No)
+-- ============================================================
+local function ShowResetDialog()
+    local overlay = Instance.new("TextButton")
+    overlay.Size = UDim2.new(1, 0, 1, 0)
+    overlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    overlay.BackgroundTransparency = 0.5
+    overlay.Text = ""
+    overlay.AutoButtonColor = false
+    overlay.Parent = WarnGui
+
+    local box = Instance.new("Frame")
+    box.Size = UDim2.new(0, 300, 0, 140)
+    box.Position = UDim2.new(0.5, -150, 0.5, -100)
+    box.BackgroundColor3 = THEME.BG
+    box.BorderSizePixel = 0
+    box.BackgroundTransparency = 1
+    box.Parent = overlay
+    local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 12); bc.Parent = box
+
+    local boxStroke = Instance.new("UIStroke")
+    boxStroke.Color = THEME.MAIN
+    boxStroke.Thickness = 3
+    boxStroke.Transparency = 1
+    boxStroke.Parent = box
+
+    Tween(box, 0.4, { BackgroundTransparency = 0, Position = UDim2.new(0.5, -150, 0.5, -70) }, Enum.EasingStyle.Back)
+    Tween(boxStroke, 0.4, { Transparency = 0 }, Enum.EasingStyle.Quart)
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, -20, 0, 40)
+    title.Position = UDim2.new(0, 10, 0, 20)
+    title.BackgroundTransparency = 1
+    title.Text = "Do you want to reset?"
+    title.TextColor3 = THEME.MAIN
+    title.TextSize = 16
+    title.Font = FONT
+    title.TextWrapped = true
+    title.Parent = box
+
+    local yesBtn = Instance.new("TextButton")
+    yesBtn.Size = UDim2.new(0, 120, 0, 42)
+    yesBtn.Position = UDim2.new(0, 20, 0, 80)
+    yesBtn.BackgroundColor3 = Color3.fromRGB(0, 60, 30)
+    yesBtn.TextColor3 = THEME.GREEN
+    yesBtn.Text = "Yes"
+    yesBtn.TextSize = 14
+    yesBtn.Font = FONT
+    yesBtn.BorderSizePixel = 0
+    yesBtn.Parent = box
+    yesBtn.AutoButtonColor = false
+    local ybc = Instance.new("UICorner"); ybc.CornerRadius = UDim.new(0, 8); ybc.Parent = yesBtn
+    local yStroke = Instance.new("UIStroke"); yStroke.Color = THEME.GREEN; yStroke.Thickness = 1.5; yStroke.Parent = yesBtn
+
+    local noBtn = Instance.new("TextButton")
+    noBtn.Size = UDim2.new(0, 120, 0, 42)
+    noBtn.Position = UDim2.new(1, -140, 0, 80)
+    noBtn.BackgroundColor3 = Color3.fromRGB(60, 0, 0)
+    noBtn.TextColor3 = THEME.MAIN
+    noBtn.Text = "No"
+    noBtn.TextSize = 14
+    noBtn.Font = FONT
+    noBtn.BorderSizePixel = 0
+    noBtn.Parent = box
+    noBtn.AutoButtonColor = false
+    local nbc = Instance.new("UICorner"); nbc.CornerRadius = UDim.new(0, 8); nbc.Parent = noBtn
+    local nStroke = Instance.new("UIStroke"); nStroke.Color = THEME.MAIN; nStroke.Thickness = 1.5; nStroke.Parent = noBtn
+
+    local function close()
+        Tween(box, 0.25, {
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0.5, -150, 0.5, -100)
+        }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+        Tween(boxStroke, 0.25, { Transparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+        Tween(overlay, 0.25, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+        task.delay(0.3, function()
+            pcall(function() overlay:Destroy() end)
+        end)
+    end
+
+    yesBtn.MouseEnter:Connect(function()
+        Tween(yesBtn, 0.25, { BackgroundColor3 = Color3.fromRGB(0, 100, 50) })
+    end)
+    yesBtn.MouseLeave:Connect(function()
+        Tween(yesBtn, 0.25, { BackgroundColor3 = Color3.fromRGB(0, 60, 30) })
+    end)
+    noBtn.MouseEnter:Connect(function()
+        Tween(noBtn, 0.25, { BackgroundColor3 = Color3.fromRGB(100, 0, 0) })
+    end)
+    noBtn.MouseLeave:Connect(function()
+        Tween(noBtn, 0.25, { BackgroundColor3 = Color3.fromRGB(60, 0, 0) })
+    end)
+
+    yesBtn.MouseButton1Click:Connect(function()
+        close()
+        Notify("Resetting...", 2)
+        -- Здесь можно добавить логику reset (например, сбросить позицию GUI)
+        task.wait(0.4)
+        savedMainPos = UDim2.new(0.5, -140, 0.5, -170)
+        savedMiscPos = UDim2.new(0.5, 148, 0.5, -170)
+        MainFrame.Position = savedMainPos
+        MiscFrame.Position = savedMiscPos
+        Notify("Reset complete", 2)
+    end)
+    noBtn.MouseButton1Click:Connect(close)
+end
+
+-- ============================================================
 -- MODULE BUTTONS
 -- ============================================================
 local AUTOFARM_URL = "https://cdn.jsdelivr.net/gh/Xyqwerq/XyqwPiggy@main/XyqwAutoFarm.lua"
@@ -1034,8 +1220,13 @@ MakeModuleBtn("Load XyqwSkinChanger", THEME.GREEN, function()
     loadScriptFromURL(SKINCHANGER_URL, "XyqwSkinChanger")
 end)
 
+-- Destroy в Misc (красная кнопка)
+MakeMiscBtn("Destroy XyqwPiggy", Color3.fromRGB(255, 50, 50), function()
+    DestroyXyqwPiggy()
+end)
+
 -- ============================================================
--- DRAG MAIN (с сохранением позиции)
+-- DRAG MAIN
 -- ============================================================
 local mDrag, mStart, mStartPos = false, nil, nil
 TitleBar.InputBegan:Connect(function(input)
@@ -1062,7 +1253,6 @@ UserInputService.InputChanged:Connect(function(input)
             mStartPos.Y.Scale, mStartPos.Y.Offset + d.Y
         )
         MainFrame.Position = newPos
-        -- Сохраняем позицию при драге
         savedMainPos = newPos
         if State.miscOpen then
             MiscFrame.Position = UDim2.new(
@@ -1074,7 +1264,7 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- DRAG MISC (с сохранением позиции)
+-- DRAG MISC
 local miDrag, miStart, miStartPos = false, nil, nil
 MiscTitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -1116,7 +1306,6 @@ MiscBtn.MouseButton1Click:Connect(function()
     if State.miscOpen then
         CloseMisc()
     else
-        -- Позиционируем Misc рядом с Main
         savedMiscPos = UDim2.new(
             MainFrame.Position.X.Scale,
             MainFrame.Position.X.Offset + MainFrame.AbsoluteSize.X + 8,
@@ -1173,7 +1362,9 @@ end)
 
 print("[XyqwPiggy v" .. VERSION .. "] Part 1 loaded!")
 
+-- ============================================================
 -- ESP FOLDER
+-- ============================================================
 local ESPFolder = Instance.new("Folder")
 ESPFolder.Name = "XyqwPiggyESP"
 ESPFolder.Parent = CoreGui
@@ -1430,7 +1621,7 @@ function _G.__RefreshItemList()
             nl.Text = itemName
             nl.TextColor3 = THEME.MAIN
             nl.TextSize = 13
-            nl.Font = Enum.Font.Gotham
+            nl.Font = FONT
             nl.TextXAlignment = Enum.TextXAlignment.Left
             nl.TextTruncate = Enum.TextTruncate.AtEnd
             nl.Parent = row
@@ -1664,21 +1855,8 @@ ScanBtn.MouseButton1Click:Connect(function()
     if _G.__RefreshItemList then _G.__RefreshItemList() end
 end)
 
-OpenGameBtn.MouseButton1Click:Connect(function()
-    local mainMenu = LP.PlayerGui:FindFirstChild("MainMenu")
-    if mainMenu then
-        local skf = mainMenu:FindFirstChild("SkinsFrame")
-        if skf then skf.Visible = true; Notify("Menu opened", 2) end
-    end
-end)
-
-RefreshBalBtn.MouseButton1Click:Connect(function()
-    BalanceLabel.Text = "Piggy Coins: " .. GetPiggyCoins()
-    Notify("Balance refreshed", 1)
-end)
-
 ResetBtn.MouseButton1Click:Connect(function()
-    Notify("Reset", 2)
+    ShowResetDialog()
 end)
 
 -- Toggles handlers
