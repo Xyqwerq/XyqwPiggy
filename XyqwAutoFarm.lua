@@ -1,4 +1,4 @@
-print("[AF] Loading v15.1...")
+print("[AF] Loading v15.2...")
 
 local Players = game:GetService("Players")
 local StarterGui = game:GetService("StarterGui")
@@ -25,7 +25,7 @@ local PEDESTAL     = Vector3.new(-620.87, 125.72, -239.07)
 local State = {
     ATTEMPT = 0, ON = false, STOP = false,
     DeletePiggy = false, DeletePiggyActive = false,
-    NoWalk = true, AntiAFK = true, Destroyed = false,
+    NoWalk = true, AntiAFK = true, WaitPlayers = true, Destroyed = false,
 }
 
 local Remotes = {}
@@ -53,9 +53,7 @@ local function ErrorCritical(msg)
     end)
 end
 
-local function WarnSoft(msg)
-    warn("[AF WARN] " .. tostring(msg))
-end
+local function WarnSoft(msg) warn("[AF WARN] " .. tostring(msg)) end
 
 -- ============================================================
 -- NOTIFY
@@ -73,12 +71,9 @@ end
 -- ============================================================
 -- LOG
 -- ============================================================
-local LOG_LINES = {}
-local LOG_MAX = 100
-local LogLabelRef = nil
-local LogScrollRef = nil
-local LOG_FONT = Enum.Font.Code
-local LOG_SIZE = 12
+local LOG_LINES, LOG_MAX = {}, 100
+local LogLabelRef, LogScrollRef = nil, nil
+local LOG_FONT, LOG_SIZE = Enum.Font.Code, 12
 
 local function UpdateLogUI()
     if not LogLabelRef or not LogScrollRef then return end
@@ -178,7 +173,7 @@ local function GetPhase()
 end
 
 -- ============================================================
--- ЗАЩИЩЁННЫЙ FIRE
+-- FIRE
 -- ============================================================
 local function Fire(remote, a, b, c)
     if not remote or State.Destroyed then return end
@@ -202,7 +197,7 @@ local function Fire(remote, a, b, c)
 end
 
 -- ============================================================
--- БЕЗОПАСНЫЙ SKIP TIMER
+-- SAFE SKIP TIMER
 -- ============================================================
 local SAFE_SKIP_PHASES = {
     ["Intermission"] = true, ["Map Voting"] = true,
@@ -336,6 +331,62 @@ local function IsVIP()
 end
 
 -- ============================================================
+-- МНОГОИГРОКОВАЯ ЛОГИКА
+-- ============================================================
+local function GetOtherAlivePlayers()
+    local result = {}
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LP and plr.Character then
+            local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 then
+                table.insert(result, plr)
+            end
+        end
+    end
+    return result
+end
+
+local function IsPlayerStillInGame(plr)
+    local char = plr.Character
+    if not char then return false end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return false end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+    -- Если отошёл от двери больше чем на 100 studs — прошёл через неё и ушёл
+    if (hrp.Position - EXIT_DOOR).Magnitude > 100 then return false end
+    return true
+end
+
+local function WaitForOthersToEscape(maxSeconds)
+    maxSeconds = maxSeconds or 120
+    local t0 = tick()
+    local lastLog = 0
+    while tick() - t0 < maxSeconds and not State.STOP and not State.Destroyed do
+        local stillInGame = {}
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LP and IsPlayerStillInGame(plr) then
+                table.insert(stillInGame, plr.Name)
+            end
+        end
+        if #stillInGame == 0 then
+            Log("All other players escaped/died, escaping now")
+            Notify("All players escaped! Escaping...", 3)
+            return true
+        end
+        if tick() - lastLog > 10 then
+            lastLog = tick()
+            Log("Waiting for: " .. table.concat(stillInGame, ", ") .. " (" .. math.floor(tick() - t0) .. "s/" .. maxSeconds .. "s)")
+        end
+        task.wait(3)
+    end
+    if State.STOP or State.Destroyed then return false end
+    Log("Timeout reached, escaping anyway")
+    Notify("Timeout — escaping now", 3)
+    return true
+end
+
+-- ============================================================
 -- DELETE PIGGY
 -- ============================================================
 local function IsCameraModel(obj)
@@ -456,7 +507,7 @@ local function DisableAntiAFK()
 end
 
 -- ============================================================
--- CD КЭШ
+-- CD
 -- ============================================================
 local function GetCDs(force)
     local now = tick()
@@ -532,9 +583,7 @@ end
 local function FindMesh(meshId)
     for _, e in ipairs(GetCDs()) do
         local mesh = e.part:FindFirstChildOfClass("SpecialMesh")
-        if mesh and mesh.MeshId and mesh.MeshId:find(meshId) then
-            return e.part
-        end
+        if mesh and mesh.MeshId and mesh.MeshId:find(meshId) then return e.part end
     end
     return nil
 end
@@ -600,10 +649,7 @@ local function TakeItem(meshId, itemName)
         task.wait(0.15)
         ClickAround(target.Position, 4, itemName)
         task.wait(0.2)
-        if HasItem(itemName) then
-            Log(itemName .. " OK")
-            return true
-        end
+        if HasItem(itemName) then Log(itemName .. " OK"); return true end
     end
     LogWarn(itemName .. " FAILED")
     return false
@@ -730,9 +776,7 @@ local function WalkForward(maxSeconds)
         lastPos = pos
         look = hrp.CFrame.LookVector
         dir = Vector3.new(look.X, 0, look.Z)
-        if dir.Magnitude > 0.01 then
-            target = hrp.Position + dir.Unit * 500
-        end
+        if dir.Magnitude > 0.01 then target = hrp.Position + dir.Unit * 500 end
         pcall(function() hum:MoveTo(target) end)
     end
     pcall(function() hum.WalkSpeed = savedSpeed end)
@@ -912,6 +956,9 @@ local function MainLoop()
             end
             task.wait(0.5)
 
+            -- ================================================
+            -- WHITEKEY + МНОГОИГРОКОВАЯ ЛОГИКА
+            -- ================================================
             Log("--- WhiteKey ---")
             if IsInGame() and not GetEggInBackpack() then
                 if not HasItem("WhiteKey") then
@@ -926,6 +973,23 @@ local function MainLoop()
                 if HasItem("WhiteKey") then
                     Teleport(EXIT_DOOR); task.wait(0.15)
                     ClickAround(EXIT_DOOR, 3); task.wait(0.5)
+
+                    -- Ждём других игроков, если toggle ON
+                    if State.WaitPlayers then
+                        local others = GetOtherAlivePlayers()
+                        if #others > 0 then
+                            Log("Detected " .. #others .. " other player(s). Waiting for them to escape...")
+                            Notify("Waiting for " .. #others .. " player(s) to escape...", 5)
+                            if IsInGame() then
+                                WaitForOthersToEscape(120)
+                            end
+                        else
+                            Log("No other players — escaping immediately")
+                        end
+                    else
+                        Log("Wait Players OFF — escaping immediately")
+                    end
+
                     if IsInGame() then WalkForward(25) end
                 end
             end
@@ -966,14 +1030,14 @@ if pg then ScreenGui.Parent = pg end
 local function CalculateUIScale()
     local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
     local maxW = math.floor(vp.X * 0.80)
-    local maxH = math.floor(vp.Y * 0.80)
-    local scale = math.min(maxW / 320, maxH / 500)
+    local maxH = math.floor(vp.Y * 0.85)
+    local scale = math.min(maxW / 320, maxH / 540)
     return math.clamp(scale, 0.68, 1.0)
 end
 
 local UI_SCALE = CalculateUIScale()
 local BASE_W = 320
-local BASE_H = 500
+local BASE_H = 540
 
 local function CenteredPos()
     return UDim2.new(
@@ -1006,7 +1070,7 @@ local function DestroyAll()
 end
 
 -- ============================================================
--- СОХРАНЕНИЕ ПОЗИЦИИ DOCK
+-- DOCK SAVE
 -- ============================================================
 local DOCK_FOLDER = "XyqwAutoFarm"
 local DOCK_FILE = DOCK_FOLDER .. "/dock_pos.txt"
@@ -1022,9 +1086,7 @@ local function LoadDockPos()
             local data = readfile(DOCK_FILE)
             if data then
                 local x, y = data:match("(%-?%d+)|(%-?%d+)")
-                if x and y then
-                    saved = UDim2.new(0, tonumber(x), 0, tonumber(y))
-                end
+                if x and y then saved = UDim2.new(0, tonumber(x), 0, tonumber(y)) end
             end
         end
     end)
@@ -1043,7 +1105,7 @@ local function SaveDockPos()
 end
 
 -- ============================================================
--- DOCK
+-- DOCK BTN
 -- ============================================================
 local DockBtn = Instance.new("TextButton")
 DockBtn.Size = UDim2.new(0, 150, 0, 44)
@@ -1059,12 +1121,8 @@ DockBtn.AutoButtonColor = false
 DockBtn.ZIndex = 1000
 local DockC = Instance.new("UICorner"); DockC.CornerRadius = UDim.new(0, 20); DockC.Parent = DockBtn
 local DockS = Instance.new("UIStroke"); DockS.Color = Color3.fromRGB(255, 100, 200); DockS.Thickness = 2; DockS.Parent = DockBtn
-local DockTS = Instance.new("UIStroke"); DockTS.Color = Color3.fromRGB(0, 0, 0); DockTS.Thickness = 2; DockTS.Parent = DockBtn
 HoverStroke(DockS, Color3.fromRGB(255, 100, 200), Color3.fromRGB(255, 180, 230), 2, 3, 0.4)
-
-local DockScale = Instance.new("UIScale")
-DockScale.Scale = UI_SCALE
-DockScale.Parent = DockBtn
+local DockScale = Instance.new("UIScale"); DockScale.Scale = UI_SCALE; DockScale.Parent = DockBtn
 
 -- ============================================================
 -- MAIN
@@ -1080,10 +1138,7 @@ Main.BackgroundTransparency = 1
 Main.Parent = ScreenGui
 local MainC = Instance.new("UICorner"); MainC.CornerRadius = UDim.new(0, 12); MainC.Parent = Main
 local MainStroke = Instance.new("UIStroke"); MainStroke.Color = Color3.fromRGB(255, 100, 200); MainStroke.Thickness = 2; MainStroke.Parent = Main
-
-local MainScale = Instance.new("UIScale")
-MainScale.Scale = UI_SCALE
-MainScale.Parent = Main
+local MainScale = Instance.new("UIScale"); MainScale.Scale = UI_SCALE; MainScale.Parent = Main
 
 local function ClampMainPos(pos)
     local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
@@ -1112,7 +1167,6 @@ local function CloseMain()
     task.delay(0.35, function()
         if State.Destroyed then return end
         Main.Visible = false
-        -- Dock возвращается туда, куда её поставил пользователь
         DockBtn.Position = savedDockPos
         DockBtn.Visible = true
         DockBtn.BackgroundTransparency = 1
@@ -1121,9 +1175,7 @@ local function CloseMain()
     end)
 end
 
--- ============================================================
 -- TITLE BAR
--- ============================================================
 local TitleBar = Instance.new("Frame")
 TitleBar.Size = UDim2.new(1, 0, 0, 34)
 TitleBar.BackgroundColor3 = Color3.fromRGB(35, 0, 25)
@@ -1135,7 +1187,7 @@ local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, -80, 1, 0)
 TitleLabel.Position = UDim2.new(0, 10, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "XyqwAutoFarm v15.1 | Gallery"
+TitleLabel.Text = "XyqwAutoFarm v15.2 | Gallery"
 TitleLabel.TextColor3 = Color3.fromRGB(255, 130, 215)
 TitleLabel.TextSize = 13
 TitleLabel.Font = Enum.Font.GothamBold
@@ -1200,9 +1252,7 @@ local function MakeToggle(text, y, getState, onToggle)
     row.Parent = Main
     local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(0, 8); rc.Parent = row
     local rStroke = Instance.new("UIStroke")
-    rStroke.Color = Color3.fromRGB(255, 100, 200)
-    rStroke.Thickness = 1.5
-    rStroke.Parent = row
+    rStroke.Color = Color3.fromRGB(255, 100, 200); rStroke.Thickness = 1.5; rStroke.Parent = row
 
     local lbl = Instance.new("TextLabel")
     lbl.Size = UDim2.new(1, -60, 1, 0)
@@ -1227,9 +1277,7 @@ local function MakeToggle(text, y, getState, onToggle)
     box.ZIndex = 5
     local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 6); bc.Parent = box
     local bStroke = Instance.new("UIStroke")
-    bStroke.Color = Color3.fromRGB(255, 100, 200)
-    bStroke.Thickness = 1.5
-    bStroke.Parent = box
+    bStroke.Color = Color3.fromRGB(255, 100, 200); bStroke.Thickness = 1.5; bStroke.Parent = box
 
     local function U()
         local target = getState() and Color3.fromRGB(0, 220, 90) or Color3.fromRGB(220, 0, 0)
@@ -1243,15 +1291,6 @@ local function MakeToggle(text, y, getState, onToggle)
     TrackConn(row.MouseLeave:Connect(function()
         Tween(row, 0.35, { BackgroundColor3 = Color3.fromRGB(30, 0, 22) }, Enum.EasingStyle.Quart)
         Tween(rStroke, 0.35, { Color = Color3.fromRGB(255, 100, 200), Thickness = 1.5 }, Enum.EasingStyle.Quart)
-    end))
-
-    TrackConn(box.MouseEnter:Connect(function()
-        Tween(box, 0.3, { Size = UDim2.new(0, 34, 0, 34), Position = UDim2.new(1, -42, 0.5, -17) }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-        Tween(bStroke, 0.3, { Color = Color3.fromRGB(255, 200, 240), Thickness = 2 }, Enum.EasingStyle.Quart)
-    end))
-    TrackConn(box.MouseLeave:Connect(function()
-        Tween(box, 0.3, { Size = UDim2.new(0, 30, 0, 30), Position = UDim2.new(1, -40, 0.5, -15) }, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-        Tween(bStroke, 0.3, { Color = Color3.fromRGB(255, 100, 200), Thickness = 1.5 }, Enum.EasingStyle.Quart)
     end))
 
     local lastClick = 0
@@ -1284,7 +1323,11 @@ MakeToggle("Anti-AFK", 128, function() return State.AntiAFK end, function()
     if State.AntiAFK then DisableAntiAFK() else EnableAntiAFK() end
 end)
 
-MakeToggle("AutoFarm", 170, function() return State.ON end, function()
+MakeToggle("Wait Players", 170, function() return State.WaitPlayers end, function()
+    State.WaitPlayers = not State.WaitPlayers
+end)
+
+MakeToggle("AutoFarm", 212, function() return State.ON end, function()
     if State.ON then
         State.STOP = true
         State.ON = false
@@ -1298,7 +1341,7 @@ end)
 
 local DestroyBtn = Instance.new("TextButton")
 DestroyBtn.Size = UDim2.new(1, -20, 0, 32)
-DestroyBtn.Position = UDim2.new(0, 10, 0, 214)
+DestroyBtn.Position = UDim2.new(0, 10, 0, 256)
 DestroyBtn.BackgroundColor3 = Color3.fromRGB(60, 0, 20)
 DestroyBtn.TextColor3 = Color3.fromRGB(255, 80, 100)
 DestroyBtn.Text = "💥 Destroy XyqwAutoFarm"
@@ -1388,15 +1431,11 @@ AddTextStroke(Balance, 2)
 task.spawn(function()
     while not State.Destroyed do
         task.wait(3)
-        pcall(function()
-            Balance.Text = "Piggy Coins: " .. GetBalance()
-        end)
+        pcall(function() Balance.Text = "Piggy Coins: " .. GetBalance() end)
     end
 end)
 
--- ============================================================
 -- DRAG MAIN
--- ============================================================
 local drag = false
 local dragStart = Vector2.new()
 local dragStartScale = Vector2.new()
@@ -1448,9 +1487,7 @@ TrackConn(UserInputService.InputEnded:Connect(function(input)
     end
 end))
 
--- ============================================================
--- DRAG DOCK (с сохранением)
--- ============================================================
+-- DRAG DOCK
 local dDrag, dStart, dStartPos, dMoved = false, nil, nil, false
 TrackConn(DockBtn.InputBegan:Connect(function(input)
     if State.Destroyed then return end
@@ -1477,12 +1514,7 @@ end))
 TrackConn(UserInputService.InputEnded:Connect(function(input)
     if (input.UserInputType == Enum.UserInputType.MouseButton1
     or input.UserInputType == Enum.UserInputType.Touch) and dDrag then
-        if dMoved then
-            SaveDockPos()
-        else
-            DockBtn.Visible = false
-            OpenMain()
-        end
+        if dMoved then SaveDockPos() else DockBtn.Visible = false; OpenMain() end
         dDrag = false
     end
 end))
@@ -1501,9 +1533,8 @@ task.spawn(function()
     task.wait(1)
     if State.Destroyed then return end
     EnableAntiAFK()
-    Log("Auto-enabled: Anti-AFK, NoWalk")
+    Log("Auto-enabled: Anti-AFK, NoWalk, Wait Players")
 end)
 
-Notify("AutoFarm v15.1 loaded!", 5)
-print("[AF] Ready v15.1 | UI_SCALE = " .. string.format("%.2f", UI_SCALE))
-print("[AF] Dock saved at: " .. tostring(savedDockPos))
+Notify("AutoFarm v15.2 loaded!", 5)
+print("[AF] Ready v15.2 | UI_SCALE = " .. string.format("%.2f", UI_SCALE))
