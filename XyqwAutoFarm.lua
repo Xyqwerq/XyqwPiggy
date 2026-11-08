@@ -1,4 +1,4 @@
-print("[AF] Loading v15.0...")
+print("[AF] Loading v15.1...")
 
 local Players = game:GetService("Players")
 local StarterGui = game:GetService("StarterGui")
@@ -23,14 +23,9 @@ local PEDESTAL     = Vector3.new(-620.87, 125.72, -239.07)
 -- STATE
 -- ============================================================
 local State = {
-    ATTEMPT = 0,
-    ON = false,
-    STOP = false,
-    DeletePiggy = false,
-    DeletePiggyActive = false,
-    NoWalk = true,
-    AntiAFK = true,
-    Destroyed = false,
+    ATTEMPT = 0, ON = false, STOP = false,
+    DeletePiggy = false, DeletePiggyActive = false,
+    NoWalk = true, AntiAFK = true, Destroyed = false,
 }
 
 local Remotes = {}
@@ -88,9 +83,7 @@ local LOG_SIZE = 12
 local function UpdateLogUI()
     if not LogLabelRef or not LogScrollRef then return end
     local text = ""
-    for i = 1, #LOG_LINES do
-        text = text .. LOG_LINES[i] .. "\n"
-    end
+    for i = 1, #LOG_LINES do text = text .. LOG_LINES[i] .. "\n" end
     LogLabelRef.Text = text
     local width = LogScrollRef.AbsoluteSize.X - 8
     if width <= 10 then width = 200 end
@@ -185,16 +178,14 @@ local function GetPhase()
 end
 
 -- ============================================================
--- ЗАЩИЩЁННЫЙ FIRE (блокирует в GameInProgress / Starting Game)
+-- ЗАЩИЩЁННЫЙ FIRE
 -- ============================================================
 local function Fire(remote, a, b, c)
     if not remote or State.Destroyed then return end
-
     local function IsDangerous()
         local p = GetPhase()
         return p == "GameInProgress" or p == "Starting Game"
     end
-
     if remote.Name == "VIPCommandEvent" or remote.Name == "JoinGame" then
         for i = 1, 10 do
             if IsDangerous() then
@@ -204,7 +195,6 @@ local function Fire(remote, a, b, c)
             task.wait(0.05)
         end
     end
-
     pcall(function()
         if remote:IsA("RemoteEvent") then remote:FireServer(a, b, c)
         elseif remote:IsA("RemoteFunction") then remote:InvokeServer(a, b, c) end
@@ -212,18 +202,15 @@ local function Fire(remote, a, b, c)
 end
 
 -- ============================================================
--- БЕЗОПАСНЫЙ SKIP TIMER (не даёт сбросить катку)
+-- БЕЗОПАСНЫЙ SKIP TIMER
 -- ============================================================
 local SAFE_SKIP_PHASES = {
-    ["Intermission"]    = true,
-    ["Map Voting"]      = true,
-    ["Selecting Map"]   = true,
-    ["Piggy Voting"]    = true,
+    ["Intermission"] = true, ["Map Voting"] = true,
+    ["Selecting Map"] = true, ["Piggy Voting"] = true,
     ["Selecting Piggy"] = true,
 }
 local FORBIDDEN_SKIP_PHASES = {
-    ["GameInProgress"] = true,
-    ["Starting Game"]  = true,
+    ["GameInProgress"] = true, ["Starting Game"] = true,
 }
 
 local function IsPhaseSafeToSkip(p)
@@ -245,7 +232,6 @@ end
 local function TrySkipTimer()
     if State.Destroyed or State.STOP then return false end
     if not Remotes.VIPCommandEvent then return false end
-
     local p1 = GetPhase()
     if IsPhaseForbiddenToSkip(p1) then
         Log("SkipTimer BLOCKED (phase=" .. tostring(p1) .. ")")
@@ -255,22 +241,17 @@ local function TrySkipTimer()
         Log("SkipTimer BLOCKED (unsafe phase=" .. tostring(p1) .. ")")
         return false
     end
-
     task.wait(0.15)
     local p2 = GetPhase()
     if IsPhaseForbiddenToSkip(p2) or not IsPhaseSafeToSkip(p2) then
         Log("SkipTimer BLOCKED on recheck (phase=" .. tostring(p2) .. ")")
         return false
     end
-
     if IsAlive() and GetPhase() == "GameInProgress" then
         Log("SkipTimer BLOCKED (player alive in game)")
         return false
     end
-
-    pcall(function()
-        Remotes.VIPCommandEvent:FireServer("SkipTimer", true)
-    end)
+    pcall(function() Remotes.VIPCommandEvent:FireServer("SkipTimer", true) end)
     return true
 end
 
@@ -494,9 +475,7 @@ local function GetCDs(force)
     return CD_CACHE
 end
 
-local function InvalidateCDCache()
-    CD_CACHE_TIME = 0
-end
+local function InvalidateCDCache() CD_CACHE_TIME = 0 end
 
 -- ============================================================
 -- ТЕЛЕПОРТ / КЛИК
@@ -786,10 +765,8 @@ local function MainLoop()
         State.ATTEMPT = State.ATTEMPT + 1
         Log("=== CYCLE #" .. State.ATTEMPT .. " ===")
         Notify("Farming... Attempt: " .. State.ATTEMPT, 3)
-
         task.wait(0.2)
 
-        -- Очистка инвентаря ТОЛЬКО в интермиссии
         local cleanPhase = GetPhase()
         if cleanPhase == "Intermission" or cleanPhase == nil then
             local bp = LP:FindFirstChild("Backpack")
@@ -809,14 +786,11 @@ local function MainLoop()
         end
         task.wait(0.2)
 
-        -- ЖДЁМ ИНТЕРМИССИЮ (до 5 мин)
         Log("Wait for intermission...")
         local tW = tick()
         while tick() - tW < 300 and not State.STOP and not State.Destroyed do
             local p = GetPhase()
-            if p == "Intermission" or p == nil or p == "Map Voting" then
-                break
-            end
+            if p == "Intermission" or p == nil or p == "Map Voting" then break end
             task.wait(0.3)
         end
         if State.STOP or State.Destroyed then break end
@@ -835,7 +809,6 @@ local function MainLoop()
         task.wait(0.3)
         Fire(Remotes.JoinGame, true)
         task.wait(0.3)
-
         Fire(Remotes.VIPCommandEvent, "SetMap", "Gallery")
         task.wait(0.4)
         TrySkipTimer()
@@ -980,7 +953,7 @@ local function MainLoop()
 end
 
 -- ============================================================
--- SCREEN GUI + UISCALE (мобильная адаптация)
+-- SCREEN GUI
 -- ============================================================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "XyqwAF"
@@ -990,10 +963,8 @@ ScreenGui.DisplayOrder = 999
 local pg = LP:FindFirstChild("PlayerGui")
 if pg then ScreenGui.Parent = pg end
 
--- Вычисляем масштаб для мобилок
 local function CalculateUIScale()
     local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
-    -- GUI занимает максимум 80% ширины и 80% высоты экрана
     local maxW = math.floor(vp.X * 0.80)
     local maxH = math.floor(vp.Y * 0.80)
     local scale = math.min(maxW / 320, maxH / 500)
@@ -1004,7 +975,6 @@ local UI_SCALE = CalculateUIScale()
 local BASE_W = 320
 local BASE_H = 500
 
--- Возвращает центрированную позицию с учётом UIScale
 local function CenteredPos()
     return UDim2.new(
         0.5, -math.floor(BASE_W * UI_SCALE / 2),
@@ -1012,7 +982,6 @@ local function CenteredPos()
     )
 end
 
--- Сохранение позиции Main
 local lastMainPos = nil
 
 local function DestroyAll()
@@ -1036,10 +1005,49 @@ local function DestroyAll()
     end)
 end
 
+-- ============================================================
+-- СОХРАНЕНИЕ ПОЗИЦИИ DOCK
+-- ============================================================
+local DOCK_FOLDER = "XyqwAutoFarm"
+local DOCK_FILE = DOCK_FOLDER .. "/dock_pos.txt"
+
+pcall(function()
+    if not isfolder(DOCK_FOLDER) then makefolder(DOCK_FOLDER) end
+end)
+
+local function LoadDockPos()
+    local saved = nil
+    pcall(function()
+        if isfile and isfile(DOCK_FILE) then
+            local data = readfile(DOCK_FILE)
+            if data then
+                local x, y = data:match("(%-?%d+)|(%-?%d+)")
+                if x and y then
+                    saved = UDim2.new(0, tonumber(x), 0, tonumber(y))
+                end
+            end
+        end
+    end)
+    return saved
+end
+
+local savedDockPos = LoadDockPos() or CenteredPos()
+
+local function SaveDockPos()
+    pcall(function()
+        if writefile and DockBtn and DockBtn.Parent then
+            local p = DockBtn.Position
+            writefile(DOCK_FILE, string.format("%d|%d", p.X.Offset, p.Y.Offset))
+        end
+    end)
+end
+
+-- ============================================================
 -- DOCK
+-- ============================================================
 local DockBtn = Instance.new("TextButton")
 DockBtn.Size = UDim2.new(0, 150, 0, 44)
-DockBtn.Position = CenteredPos()
+DockBtn.Position = savedDockPos
 DockBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 DockBtn.TextColor3 = Color3.fromRGB(255, 120, 210)
 DockBtn.Text = "XyqwAutoFarm"
@@ -1058,7 +1066,9 @@ local DockScale = Instance.new("UIScale")
 DockScale.Scale = UI_SCALE
 DockScale.Parent = DockBtn
 
+-- ============================================================
 -- MAIN
+-- ============================================================
 local Main = Instance.new("Frame")
 Main.Size = UDim2.new(0, BASE_W, 0, BASE_H)
 Main.Position = CenteredPos()
@@ -1075,7 +1085,6 @@ local MainScale = Instance.new("UIScale")
 MainScale.Scale = UI_SCALE
 MainScale.Parent = Main
 
--- Clamp позиции, чтобы не улетел за экран
 local function ClampMainPos(pos)
     local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
     local absW = BASE_W * UI_SCALE
@@ -1103,13 +1112,8 @@ local function CloseMain()
     task.delay(0.35, function()
         if State.Destroyed then return end
         Main.Visible = false
-        -- DockBtn встаёт на место Main (по центру Main)
-        local mainAbsPos = Main.AbsolutePosition
-        local mainAbsSize = Main.AbsoluteSize
-        local dockAbsSize = DockBtn.AbsoluteSize
-        local centerX = math.max(0, mainAbsPos.X + mainAbsSize.X / 2 - dockAbsSize.X / 2)
-        local centerY = math.max(0, mainAbsPos.Y + mainAbsSize.Y / 2 - dockAbsSize.Y / 2)
-        DockBtn.Position = UDim2.new(0, centerX, 0, centerY)
+        -- Dock возвращается туда, куда её поставил пользователь
+        DockBtn.Position = savedDockPos
         DockBtn.Visible = true
         DockBtn.BackgroundTransparency = 1
         DockBtn.TextTransparency = 1
@@ -1117,7 +1121,9 @@ local function CloseMain()
     end)
 end
 
+-- ============================================================
 -- TITLE BAR
+-- ============================================================
 local TitleBar = Instance.new("Frame")
 TitleBar.Size = UDim2.new(1, 0, 0, 34)
 TitleBar.BackgroundColor3 = Color3.fromRGB(35, 0, 25)
@@ -1129,7 +1135,7 @@ local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, -80, 1, 0)
 TitleLabel.Position = UDim2.new(0, 10, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "XyqwAutoFarm v15.0 | Gallery"
+TitleLabel.Text = "XyqwAutoFarm v15.1 | Gallery"
 TitleLabel.TextColor3 = Color3.fromRGB(255, 130, 215)
 TitleLabel.TextSize = 13
 TitleLabel.Font = Enum.Font.GothamBold
@@ -1138,7 +1144,6 @@ TitleLabel.TextTruncate = Enum.TextTruncate.AtEnd
 TitleLabel.Parent = TitleBar
 AddTextStroke(TitleLabel, 2)
 
--- Кнопка сброса позиции
 local ResetPosBtn = Instance.new("TextButton")
 ResetPosBtn.Size = UDim2.new(0, 28, 0, 28)
 ResetPosBtn.Position = UDim2.new(1, -62, 0.5, -14)
@@ -1162,7 +1167,6 @@ TrackConn(ResetPosBtn.MouseButton1Click:Connect(function()
     Notify("Position reset", 2)
 end))
 
--- CLOSE
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 28, 0, 28)
 CloseBtn.Position = UDim2.new(1, -32, 0.5, -14)
@@ -1292,7 +1296,6 @@ MakeToggle("AutoFarm", 170, function() return State.ON end, function()
     end
 end)
 
--- DESTROY BTN
 local DestroyBtn = Instance.new("TextButton")
 DestroyBtn.Size = UDim2.new(1, -20, 0, 32)
 DestroyBtn.Position = UDim2.new(0, 10, 0, 214)
@@ -1369,7 +1372,6 @@ LogLabelRef = LogLabel
 
 TrackConn(LogScroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateLogUI))
 
--- BALANCE
 local Balance = Instance.new("TextLabel")
 Balance.AnchorPoint = Vector2.new(0, 1)
 Balance.Size = UDim2.new(1, -20, 0, 26)
@@ -1392,7 +1394,9 @@ task.spawn(function()
     end
 end)
 
--- DRAG MAIN (учитывает UIScale)
+-- ============================================================
+-- DRAG MAIN
+-- ============================================================
 local drag = false
 local dragStart = Vector2.new()
 local dragStartScale = Vector2.new()
@@ -1421,7 +1425,6 @@ TrackConn(UserInputService.InputChanged:Connect(function(input)
     if State.Destroyed then return end
     if drag and (input.UserInputType == Enum.UserInputType.MouseMovement
     or input.UserInputType == Enum.UserInputType.Touch) then
-        -- Делим delta на UI_SCALE, потому что UIScale масштабирует позицию
         local dx = (input.Position.X - dragStart.X) / UI_SCALE
         local dy = (input.Position.Y - dragStart.Y) / UI_SCALE
         if math.abs(dx) > 6 or math.abs(dy) > 6 then moved = true end
@@ -1445,7 +1448,9 @@ TrackConn(UserInputService.InputEnded:Connect(function(input)
     end
 end))
 
--- DRAG DOCK
+-- ============================================================
+-- DRAG DOCK (с сохранением)
+-- ============================================================
 local dDrag, dStart, dStartPos, dMoved = false, nil, nil, false
 TrackConn(DockBtn.InputBegan:Connect(function(input)
     if State.Destroyed then return end
@@ -1464,6 +1469,7 @@ TrackConn(UserInputService.InputChanged:Connect(function(input)
         if math.abs(d.X) > 5 or math.abs(d.Y) > 5 then dMoved = true end
         if dMoved then
             DockBtn.Position = UDim2.new(0, dStartPos.X.Offset + d.X, 0, dStartPos.Y.Offset + d.Y)
+            savedDockPos = DockBtn.Position
         end
     end
 end))
@@ -1471,7 +1477,9 @@ end))
 TrackConn(UserInputService.InputEnded:Connect(function(input)
     if (input.UserInputType == Enum.UserInputType.MouseButton1
     or input.UserInputType == Enum.UserInputType.Touch) and dDrag then
-        if not dMoved then
+        if dMoved then
+            SaveDockPos()
+        else
             DockBtn.Visible = false
             OpenMain()
         end
@@ -1496,5 +1504,6 @@ task.spawn(function()
     Log("Auto-enabled: Anti-AFK, NoWalk")
 end)
 
-Notify("AutoFarm v15.0 loaded!", 5)
-print("[AF] Ready v15.0 | UI_SCALE = " .. string.format("%.2f", UI_SCALE))
+Notify("AutoFarm v15.1 loaded!", 5)
+print("[AF] Ready v15.1 | UI_SCALE = " .. string.format("%.2f", UI_SCALE))
+print("[AF] Dock saved at: " .. tostring(savedDockPos))
