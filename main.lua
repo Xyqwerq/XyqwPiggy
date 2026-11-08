@@ -1,12 +1,11 @@
-print("[XyqwPiggy] Loading v8.0...")
+print("[XyqwPiggy] Loading v8.1...")
 
 local _ok, _err = pcall(function()
 
 -- ============================================================
--- XyqwPiggy v8.0 — Mobile optimized + bugfixes
+-- XyqwPiggy v8.1 — 3D previews, correct names, dock save
 -- ============================================================
-
-local VERSION = "8.0"
+local VERSION = "8.1"
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
@@ -34,17 +33,41 @@ local IS_MOBILE = UserInputService.TouchEnabled and not UserInputService.Keyboar
 
 local function CalculateUIScale()
     local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
-    -- MainFrame 280x340, MiscFrame 230x380 (рядом) → нужно ~510x340
     local needW = 280 + 230 + 20
-    local needH = 380 + 40
+    local needH = 400 + 40
     local scaleW = (vp.X * 0.92) / needW
     local scaleH = (vp.Y * 0.85) / needH
     return math.clamp(math.min(scaleW, scaleH), 0.62, 1.0)
 end
 local UI_SCALE = CalculateUIScale()
 
--- На мобилке отключаем тяжёлые 3D-превью
-local SIMPLE_MODE = IS_MOBILE
+-- ============================================================
+-- СОХРАНЕНИЕ ПОЗИЦИИ DOCK
+-- ============================================================
+local DOCK_FOLDER = "XyqwPiggy"
+local DOCK_FILE = DOCK_FOLDER .. "/dock_pos.txt"
+
+pcall(function()
+    if not isfolder(DOCK_FOLDER) then makefolder(DOCK_FOLDER) end
+end)
+
+local function LoadDockPos()
+    local saved = nil
+    pcall(function()
+        if isfile and isfile(DOCK_FILE) then
+            local data = readfile(DOCK_FILE)
+            if data then
+                local x, y = data:match("(%-?%d+)|(%-?%d+)")
+                if x and y then
+                    saved = UDim2.new(0, tonumber(x), 0, tonumber(y))
+                end
+            end
+        end
+    end)
+    return saved
+end
+
+local savedDockPos = LoadDockPos() or UDim2.new(0.03, 0, 0.15, 0)
 
 local function Notify(text, duration)
     duration = duration or 2
@@ -240,7 +263,6 @@ local function EnableDeletePiggy()
         State.DeletePiggyActive = false
         Notify("Piggy will be deleted after cutscene!", 5)
     end
-    -- FIX: throttle до 3 Гц вместо Heartbeat
     local lastTick = 0
     deletePiggyConn = RunService.Heartbeat:Connect(function()
         if not State.DeletePiggy then return end
@@ -283,7 +305,7 @@ if not ScreenGui.Parent then ScreenGui.Parent = playerGui end
 -- DOCK
 local DockBtn = Instance.new("TextButton")
 DockBtn.Size = UDim2.new(0, 140, 0, 44)
-DockBtn.Position = UDim2.new(0.03, 0, 0.15, 0)
+DockBtn.Position = savedDockPos
 DockBtn.BackgroundColor3 = THEME.BG
 DockBtn.TextColor3 = THEME.MAIN
 DockBtn.Text = "XyqwPiggy"
@@ -296,6 +318,15 @@ DockBtn.ZIndex = 1000
 local DBC = Instance.new("UICorner"); DBC.CornerRadius = UDim.new(0, 12); DBC.Parent = DockBtn
 local DockStroke = AddStroke(DockBtn, THEME.MAIN, 2)
 local DockScale = Instance.new("UIScale"); DockScale.Scale = UI_SCALE; DockScale.Parent = DockBtn
+
+local function SaveDockPos()
+    pcall(function()
+        if writefile and DockBtn and DockBtn.Parent then
+            local p = DockBtn.Position
+            writefile(DOCK_FILE, string.format("%d|%d", p.X.Offset, p.Y.Offset))
+        end
+    end)
+end
 
 DockBtn.MouseEnter:Connect(function()
     Tween(DockStroke, 0.3, { Thickness = 3, Color = Color3.fromRGB(255, 120, 120) })
@@ -333,7 +364,6 @@ MainStroke.Thickness = 3
 MainStroke.Transparency = 1
 MainStroke.Parent = MainFrame
 
--- Clamp позиции
 local function ClampPos(pos, w, h)
     local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
     local absW = w * UI_SCALE
@@ -385,7 +415,6 @@ TitleLabel.Font = FONT
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = TitleBar
 
--- FIX: кнопки 32x32 для тача
 local MiscBtn = Instance.new("TextButton")
 MiscBtn.Size = UDim2.new(0, 52, 0, 32)
 MiscBtn.Position = UDim2.new(1, -92, 0.5, -16)
@@ -562,7 +591,6 @@ MiscStroke.Thickness = 3
 MiscStroke.Transparency = 1
 MiscStroke.Parent = MiscFrame
 
--- FIX: умное позиционирование Misc (справа / под / поверх)
 local function GetMiscOpenPos()
     local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
     local mAbsX = savedMainPos.X.Scale * vp.X + savedMainPos.X.Offset
@@ -571,23 +599,18 @@ local function GetMiscOpenPos()
     local mAbsH = MAIN_H * UI_SCALE
     local miscW = MISC_W * UI_SCALE
     local miscH = MISC_H * UI_SCALE
-
-    -- Вариант 1: справа от Main
     local x1 = mAbsX + mAbsW + 10
     if x1 + miscW <= vp.X - 5 then
         return UDim2.new(0, x1, 0, math.max(0, mAbsY))
     end
-    -- Вариант 2: слева от Main
     local x2 = mAbsX - miscW - 10
     if x2 >= 5 then
         return UDim2.new(0, x2, 0, math.max(0, mAbsY))
     end
-    -- Вариант 3: под Main
     local y3 = mAbsY + mAbsH + 10
     if y3 + miscH <= vp.Y - 5 then
         return UDim2.new(0, math.max(5, mAbsX), 0, y3)
     end
-    -- Вариант 4: поверх Main по центру
     return UDim2.new(
         0, math.max(5, mAbsX + (mAbsW - miscW) / 2),
         0, math.max(5, mAbsY + (mAbsH - miscH) / 2)
@@ -686,7 +709,7 @@ MiscScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
 end)
 
 -- ============================================================
--- HELPERS: Toggle / ModuleBtn / MiscBtn
+-- HELPERS
 -- ============================================================
 local function trackClick(target, onClick)
     local pressStart, pressPos, moved, tracking = 0, nil, false, false
@@ -828,7 +851,7 @@ ESPFolder.Parent = CoreGui
 local ESP = { Items = {}, Monster = {}, Players = {} }
 
 -- ============================================================
--- ИМЕНА ПРЕДМЕТОВ
+-- ИМЕНА ПРЕДМЕТОВ (meshId приоритетнее part.Name)
 -- ============================================================
 local function GetKeyNameByColor(c)
     local h, s, _ = Color3.toHSV(c)
@@ -845,52 +868,45 @@ local function GetKeyNameByColor(c)
     return "Key"
 end
 
+-- Уникальные meshId → названия
+local MESH_NAMES = {
+    [16198309]   = "Plank",
+    [725833400]  = "Hammer",
+    [16884681]   = "Wrench",
+    [72012879]   = "Battery",
+    [524706126]  = "Gear",
+    [6714051581] = "Note",
+    [456878024]  = "Key",
+}
+
+local function GetMeshNumber(meshId)
+    if not meshId then return nil end
+    return tonumber(meshId:match("(%d+)"))
+end
+
 local function GetItemName(item)
     local part = item.part
     if not part then return "Unknown" end
+
+    -- 1. СНАЧАЛА meshId (уникальный ID меша — самый надёжный)
+    local mesh = part:FindFirstChildOfClass("SpecialMesh")
+    local meshNum = mesh and GetMeshNumber(mesh.MeshId)
+    if meshNum then
+        if meshNum == 456878024 then
+            local pe = part:FindFirstChildOfClass("ParticleEmitter")
+            if pe and pe.Color and pe.Color.Keypoints and #pe.Color.Keypoints > 0 then
+                return GetKeyNameByColor(pe.Color.Keypoints[1].Value)
+            end
+            return "Key"
+        end
+        local mapped = MESH_NAMES[meshNum]
+        if mapped then return mapped end
+    end
+
+    -- 2. Fallback: part.Name
     local n = part.Name
     if n and n ~= "" and not n:match("^%-?%d+$") then return n end
-    local mesh = part:FindFirstChildOfClass("SpecialMesh")
-    local meshId = mesh and mesh.MeshId or nil
-    if meshId == "rbxassetid://524706126" then return "Gear" end
-    if meshId == "rbxassetid://725833400" then return "Hammer" end
-    if meshId == "http://www.roblox.com/asset/?id=16198309" then return "Plank" end
-    if meshId == "http://www.roblox.com/asset/?id=72012879" then return "Battery" end
-    if meshId == "http://www.roblox.com/asset/?id=16884681" then return "Wrench" end
-    if meshId == "rbxassetid://6714051581" then return "Note" end
-    if meshId == "rbxassetid://456878024" then
-        local pe = part:FindFirstChildOfClass("ParticleEmitter")
-        if pe and pe.Color and pe.Color.Keypoints and #pe.Color.Keypoints > 0 then
-            return GetKeyNameByColor(pe.Color.Keypoints[1].Value)
-        end
-        return "Key"
-    end
     return "Item"
-end
-
--- Возвращает цвет-иконку для Simple Mode (мобилка)
-local function GetItemColor(item)
-    local mesh = item.part:FindFirstChildOfClass("SpecialMesh")
-    local meshId = mesh and mesh.MeshId or ""
-    if meshId:find("456878024") then
-        local pe = item.part:FindFirstChildOfClass("ParticleEmitter")
-        if pe and pe.Color and pe.Color.Keypoints and #pe.Color.Keypoints > 0 then
-            return pe.Color.Keypoints[1].Value
-        end
-        return Color3.fromRGB(255, 255, 255)
-    end
-    if meshId:find("725833400") then return Color3.fromRGB(200, 130, 60) end
-    if meshId:find("16884681") then return Color3.fromRGB(180, 180, 190) end
-    if meshId:find("16198309") then return Color3.fromRGB(140, 90, 40) end
-    if meshId:find("72012879") then return Color3.fromRGB(255, 220, 0) end
-    if meshId:find("6714051581") then return Color3.fromRGB(230, 230, 180) end
-    if meshId:find("524706126") then return Color3.fromRGB(150, 150, 200) end
-    return Color3.fromRGB(120, 120, 120)
-end
-
-local function GetItemLetter(item)
-    local name = GetItemName(item)
-    return string.upper(string.sub(name, 1, 1))
 end
 
 -- ============================================================
@@ -968,7 +984,7 @@ local function GetListItems()
 end
 
 -- ============================================================
--- 3D PREVIEW (Simple Mode для мобилки / WorldModel для ПК)
+-- 3D PREVIEW
 -- ============================================================
 local spinningModels = {}
 local previewConn = nil
@@ -1003,10 +1019,14 @@ local function Create3DView(part, vpf)
         mp.Parent = model
         local extents = model:GetExtentsSize()
         local maxE = math.max(extents.X, extents.Y, extents.Z)
-        if maxE > 0.001 then model:ScaleTo(3) end
+        if maxE > 0.001 then
+            local targetSize = 2.5
+            local scale = targetSize / maxE
+            model:ScaleTo(math.clamp(scale, 0.5, 5))
+        end
         if mp:IsA("BasePart") then mp.CFrame = CFrame.new(0, 0, 0) end
         local cam = Instance.new("Camera")
-        cam.FieldOfView = 40
+        cam.FieldOfView = 55
         cam.CFrame = CFrame.new(Vector3.new(4, 3, 4), Vector3.new(0, 0, 0))
         cam.Parent = vpf
         vpf.CurrentCamera = cam
@@ -1014,33 +1034,15 @@ local function Create3DView(part, vpf)
     end)
 end
 
--- Simple Mode: иконка с буквой вместо 3D-модельки
-local function CreateSimpleIcon(part, parent)
-    local color = GetItemColor({part = part})
-    local letter = "?"
-    pcall(function() letter = string.upper(string.sub(GetItemName({part = part}), 1, 1)) end)
-    local icon = Instance.new("TextLabel")
-    icon.Size = UDim2.new(1, 0, 1, 0)
-    icon.BackgroundColor3 = color
-    icon.BackgroundTransparency = 0.3
-    icon.Text = letter
-    icon.TextColor3 = Color3.fromRGB(255, 255, 255)
-    icon.TextSize = 24
-    icon.Font = Enum.Font.GothamBold
-    icon.BorderSizePixel = 0
-    icon.Parent = parent
-    local ic = Instance.new("UICorner"); ic.CornerRadius = UDim.new(0, 5); ic.Parent = icon
-    AddStroke(icon, Color3.fromRGB(0, 0, 0), 1.5)
-end
-
--- Единый цикл вращения (не спавнить много)
+-- Единый цикл вращения
 if previewConn then previewConn:Disconnect() end
 previewConn = RunService.RenderStepped:Connect(function(dt)
     if State.destroyed then return end
+    local speed = IS_MOBILE and 20 or 60
     for _, model in ipairs(spinningModels) do
         if model and model.Parent then
             pcall(function()
-                model.CFrame = model.CFrame * CFrame.Angles(0, math.rad(60 * dt), 0)
+                model.CFrame = model.CFrame * CFrame.Angles(0, math.rad(speed * dt), 0)
             end)
         end
     end
@@ -1068,7 +1070,7 @@ local function TakeItem(item)
 end
 
 -- ============================================================
--- REFRESH ITEM LIST (с защитой от ошибок)
+-- REFRESH ITEM LIST
 -- ============================================================
 local currentItems = {}
 local scanInProgress = false
@@ -1091,10 +1093,8 @@ function _G.__RefreshItemList()
         local newKeys = {}
         for _, item in ipairs(currentItems) do newKeys[item.key] = true end
 
-        -- Удаляем отсутствующие
         for key, row in pairs(existingRows) do
             if not newKeys[key] then
-                -- FIX: чистим spinningModels вместе с row
                 for i = #spinningModels, 1, -1 do
                     local m = spinningModels[i]
                     if not m or not m.Parent then table.remove(spinningModels, i) end
@@ -1104,7 +1104,6 @@ function _G.__RefreshItemList()
             end
         end
 
-        -- Добавляем новые
         for _, item in ipairs(currentItems) do
             local row = existingRows[item.key]
             if not row then
@@ -1130,30 +1129,19 @@ function _G.__RefreshItemList()
                     Tween(rowSt, 0.3, { Color = THEME.STROKE, Thickness = 1.5 })
                 end)
 
-                -- FIX: на мобилке рисуем Simple-иконку вместо ViewportFrame
-                if SIMPLE_MODE then
-                    local iconHolder = Instance.new("Frame")
-                    iconHolder.Size = UDim2.new(0, 48, 0, 48)
-                    iconHolder.Position = UDim2.new(0, 3, 0.5, -24)
-                    iconHolder.BackgroundTransparency = 1
-                    iconHolder.Parent = row
-                    local ic = Instance.new("UICorner"); ic.CornerRadius = UDim.new(0, 5); ic.Parent = iconHolder
-                    CreateSimpleIcon(item.part, iconHolder)
-                else
-                    local vpf = Instance.new("ViewportFrame")
-                    vpf.Size = UDim2.new(0, 48, 0, 48)
-                    vpf.Position = UDim2.new(0, 3, 0.5, -24)
-                    vpf.BackgroundColor3 = Color3.fromRGB(15, 5, 5)
-                    vpf.BorderSizePixel = 1
-                    vpf.BorderColor3 = THEME.MAIN
-                    vpf.Parent = row
-                    vpf.ZIndex = 2
-                    vpf.Ambient = Color3.fromRGB(220, 220, 220)
-                    vpf.LightColor = Color3.fromRGB(255, 255, 255)
-                    local vc = Instance.new("UICorner"); vc.CornerRadius = UDim.new(0, 5); vc.Parent = vpf
-                    AddStroke(vpf)
-                    Create3DView(item.part, vpf)
-                end
+                local vpf = Instance.new("ViewportFrame")
+                vpf.Size = UDim2.new(0, 48, 0, 48)
+                vpf.Position = UDim2.new(0, 3, 0.5, -24)
+                vpf.BackgroundColor3 = Color3.fromRGB(15, 5, 5)
+                vpf.BorderSizePixel = 1
+                vpf.BorderColor3 = THEME.MAIN
+                vpf.Parent = row
+                vpf.ZIndex = 2
+                vpf.Ambient = Color3.fromRGB(220, 220, 220)
+                vpf.LightColor = Color3.fromRGB(255, 255, 255)
+                local vc = Instance.new("UICorner"); vc.CornerRadius = UDim.new(0, 5); vc.Parent = vpf
+                AddStroke(vpf)
+                Create3DView(item.part, vpf)
 
                 local itemName = GetItemName(item)
                 row:SetAttribute("ItemName", itemName)
@@ -1196,7 +1184,6 @@ function _G.__RefreshItemList()
     if not ok then
         warn("[XyqwPiggy] RefreshItemList error: " .. tostring(err))
     end
-    -- FIX: гарантированно снимаем флаг даже если внутри была ошибка
     scanInProgress = false
 end
 
@@ -1274,12 +1261,6 @@ local function RunMonsterESPLoop()
     end)
 end
 
-local function DisableMonsterESP()
-    State.ESPMonster = false
-    for _, hl in pairs(ESP.Monster) do pcall(function() hl:Destroy() end) end
-    ESP.Monster = {}
-end
-
 -- ============================================================
 -- ESP PLAYERS
 -- ============================================================
@@ -1302,25 +1283,22 @@ local function EnablePlayerESP()
     end
 end
 
--- FIX: теперь эта функция реально вызывается
 local function DisablePlayerESP()
     for _, hl in pairs(ESP.Players) do pcall(function() hl:Destroy() end) end
     ESP.Players = {}
 end
 
 -- ============================================================
--- ТРЕКЕРЫ ТОГГЛОВ (единый цикл на всё)
+-- ТРЕКЕРЫ ТОГГЛОВ
 -- ============================================================
 task.spawn(function()
     local lastItems = false
     local lastPlayers = false
     while not State.destroyed do
         task.wait(0.5)
-        -- Items
         if State.ESPItems ~= lastItems then
             lastItems = State.ESPItems
             if State.ESPItems then
-                -- Запускаем отдельный цикл обновления Items ESP
                 task.spawn(function()
                     while State.ESPItems and not State.destroyed do
                         pcall(EnableItemESP)
@@ -1332,7 +1310,6 @@ task.spawn(function()
                 DisableItemESP()
             end
         end
-        -- Players
         if State.ESPPlayers ~= lastPlayers then
             lastPlayers = State.ESPPlayers
             if State.ESPPlayers then
@@ -1341,14 +1318,12 @@ task.spawn(function()
                         pcall(EnablePlayerESP)
                         task.wait(2)
                     end
-                    -- FIX: вызов при выключении
                     DisablePlayerESP()
                 end)
             else
                 DisablePlayerESP()
             end
         end
-        -- Monster
         if State.ESPMonster and not monsterESPActive then
             RunMonsterESPLoop()
         end
@@ -1421,7 +1396,7 @@ SearchBar:GetPropertyChangedSignal("Text"):Connect(function()
 end)
 
 -- ============================================================
--- SCAN / RESET BUTTONS
+-- SCAN BUTTON
 -- ============================================================
 ScanBtn.MouseButton1Click:Connect(function()
     Notify("Scanning...", 2)
@@ -1441,7 +1416,7 @@ pcall(function() WarnGui.Parent = CoreGui end)
 if not WarnGui.Parent then WarnGui.Parent = playerGui end
 
 -- ============================================================
--- SHOW AUTOFARM WARNING (VIP check popup)
+-- AUTOFARM WARNING POPUP
 -- ============================================================
 local function ShowAutoFarmWarning(onConfirm)
     local vip = IsVIP()
@@ -1582,7 +1557,7 @@ local function ShowAutoFarmWarning(onConfirm)
 end
 
 -- ============================================================
--- SHOW RESET DIALOG
+-- RESET DIALOG
 -- ============================================================
 local function ShowResetDialog()
     local overlay = Instance.new("TextButton")
@@ -1698,16 +1673,16 @@ MakeActionBtn("Load XyqwSkinChanger", THEME.GREEN, function()
 end)
 
 -- ============================================================
--- DESTROY (объявляем заранее, чтобы действие кнопки знало о функции)
+-- DESTROY (forward decl)
 -- ============================================================
-local DestroyXyqwPiggy -- forward declaration
+local DestroyXyqwPiggy
 
 MakeActionBtn("Destroy XyqwPiggy", Color3.fromRGB(255, 50, 50), function()
     if DestroyXyqwPiggy then DestroyXyqwPiggy() end
 end)
 
 -- ============================================================
--- DRAG MAIN (с UIScale correction)
+-- DRAG MAIN
 -- ============================================================
 local mDrag, mStart, mStartPos, mMoved = false, nil, nil, false
 TitleBar.InputBegan:Connect(function(input)
@@ -1737,7 +1712,6 @@ UserInputService.InputChanged:Connect(function(input)
         local d = input.Position - mStart
         if math.abs(d.X) > 4 or math.abs(d.Y) > 4 then mMoved = true end
         if mMoved then
-            -- делим на UI_SCALE, потому что UIScale скейлит визуально
             local newPos = UDim2.new(
                 mStartPos.X.Scale, mStartPos.X.Offset + d.X / UI_SCALE,
                 mStartPos.Y.Scale, mStartPos.Y.Offset + d.Y / UI_SCALE
@@ -1798,14 +1772,8 @@ CloseBtn.MouseButton1Click:Connect(function()
     CloseMain()
     CloseMisc()
     task.delay(0.3, function()
-        -- Dock встаёт на место Main
-        local mAbs = MainFrame.AbsolutePosition
-        local mSize = MainFrame.AbsoluteSize
-        local dSize = DockBtn.AbsoluteSize
-        DockBtn.Position = UDim2.new(
-            0, math.max(0, mAbs.X + mSize.X / 2 - dSize.X / 2),
-            0, math.max(0, mAbs.Y + mSize.Y / 2 - dSize.Y / 2)
-        )
+        -- Dock возвращается туда, куда её поставил пользователь
+        DockBtn.Position = savedDockPos
         DockBtn.Visible = true
         DockBtn.BackgroundTransparency = 1
         Tween(DockBtn, 0.35, { BackgroundTransparency = 0 }, Enum.EasingStyle.Quart)
@@ -1819,7 +1787,7 @@ end)
 MiscClose.MouseButton1Click:Connect(CloseMisc)
 
 -- ============================================================
--- DOCK DRAG
+-- DOCK DRAG + SAVE
 -- ============================================================
 local dockDrag, dockStart, dockStartPos, dockMoved = false, nil, nil, false
 DockBtn.InputBegan:Connect(function(input)
@@ -1837,12 +1805,15 @@ UserInputService.InputChanged:Connect(function(input)
                 0, dockStartPos.X.Offset + d.X / UI_SCALE,
                 0, dockStartPos.Y.Offset + d.Y / UI_SCALE
             )
+            savedDockPos = DockBtn.Position
         end
     end
 end)
 UserInputService.InputEnded:Connect(function(input)
     if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and dockDrag then
-        if not dockMoved then
+        if dockMoved then
+            SaveDockPos()
+        else
             DockBtn.Visible = false
             OpenMain()
         end
@@ -1851,7 +1822,7 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 -- ============================================================
--- AUTO REFRESH BALANCE
+-- AUTO REFRESH
 -- ============================================================
 task.spawn(function()
     while not State.destroyed do
@@ -1864,9 +1835,6 @@ task.spawn(function()
     end
 end)
 
--- ============================================================
--- AUTO REFRESH ITEM LIST
--- ============================================================
 task.spawn(function()
     task.wait(1)
     if _G.__RefreshItemList then _G.__RefreshItemList() end
@@ -1879,7 +1847,7 @@ task.spawn(function()
 end)
 
 -- ============================================================
--- DESTROY (реальное определение)
+-- DESTROY (real)
 -- ============================================================
 DestroyXyqwPiggy = function()
     if State.destroyed then return end
@@ -1922,7 +1890,7 @@ task.spawn(function()
 end)
 
 Notify("XyqwPiggy v" .. VERSION .. " loaded!", 4)
-print("[XyqwPiggy v" .. VERSION .. "] Loaded! Simple Mode: " .. tostring(SIMPLE_MODE))
+print("[XyqwPiggy v" .. VERSION .. "] Loaded!")
 print("[XyqwPiggy v" .. VERSION .. "] Author: Xyqwerq")
 
 end)
