@@ -1,4 +1,4 @@
-print("[AF] Loading v14.1...")
+print("[AF] Loading v15.0...")
 
 local Players = game:GetService("Players")
 local StarterGui = game:GetService("StarterGui")
@@ -185,47 +185,93 @@ local function GetPhase()
 end
 
 -- ============================================================
--- БЕЗОПАСНЫЙ FIRE (проверка GameInProgress)
+-- ЗАЩИЩЁННЫЙ FIRE (блокирует в GameInProgress / Starting Game)
 -- ============================================================
 local function Fire(remote, a, b, c)
     if not remote or State.Destroyed then return end
-    if remote.Name == "VIPCommandEvent" then
-        for i = 1, 5 do
-            if GetPhase() == "GameInProgress" then
-                Log("BLOCKED VIP cmd '" .. tostring(a) .. "' (in game)")
+
+    local function IsDangerous()
+        local p = GetPhase()
+        return p == "GameInProgress" or p == "Starting Game"
+    end
+
+    if remote.Name == "VIPCommandEvent" or remote.Name == "JoinGame" then
+        for i = 1, 10 do
+            if IsDangerous() then
+                Log("BLOCKED " .. remote.Name .. " (phase=" .. tostring(GetPhase()) .. ")")
                 return
             end
-            task.wait(0.02)
+            task.wait(0.05)
         end
     end
-    -- JoinGame: НЕ отправляем если уже в игре
-    if remote.Name == "JoinGame" then
-        for i = 1, 5 do
-            if GetPhase() == "GameInProgress" then
-                Log("BLOCKED JoinGame (in game)")
-                return
-            end
-            task.wait(0.02)
-        end
-    end
+
     pcall(function()
         if remote:IsA("RemoteEvent") then remote:FireServer(a, b, c)
         elseif remote:IsA("RemoteFunction") then remote:InvokeServer(a, b, c) end
     end)
 end
 
-local function IsVIP()
-    local gf = workspace:FindFirstChild("GameFolder")
-    if gf then
-        local vip = gf:FindFirstChild("IsVIPServer")
-        if vip and vip.Value then return true end
+-- ============================================================
+-- БЕЗОПАСНЫЙ SKIP TIMER (не даёт сбросить катку)
+-- ============================================================
+local SAFE_SKIP_PHASES = {
+    ["Intermission"]    = true,
+    ["Map Voting"]      = true,
+    ["Selecting Map"]   = true,
+    ["Piggy Voting"]    = true,
+    ["Selecting Piggy"] = true,
+}
+local FORBIDDEN_SKIP_PHASES = {
+    ["GameInProgress"] = true,
+    ["Starting Game"]  = true,
+}
+
+local function IsPhaseSafeToSkip(p)
+    if p == nil then return true end
+    return SAFE_SKIP_PHASES[p] == true
+end
+local function IsPhaseForbiddenToSkip(p)
+    if p == nil then return false end
+    return FORBIDDEN_SKIP_PHASES[p] == true
+end
+
+local function IsAlive()
+    local char = LP.Character
+    if not char then return false end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    return hum and hum.Health > 0
+end
+
+local function TrySkipTimer()
+    if State.Destroyed or State.STOP then return false end
+    if not Remotes.VIPCommandEvent then return false end
+
+    local p1 = GetPhase()
+    if IsPhaseForbiddenToSkip(p1) then
+        Log("SkipTimer BLOCKED (phase=" .. tostring(p1) .. ")")
+        return false
     end
-    if game.PrivateServerId and game.PrivateServerId ~= "" then
-        if game.PrivateServerOwnerId == LP.UserId or game.PrivateServerOwnerId == 0 then
-            return true
-        end
+    if not IsPhaseSafeToSkip(p1) then
+        Log("SkipTimer BLOCKED (unsafe phase=" .. tostring(p1) .. ")")
+        return false
     end
-    return false
+
+    task.wait(0.15)
+    local p2 = GetPhase()
+    if IsPhaseForbiddenToSkip(p2) or not IsPhaseSafeToSkip(p2) then
+        Log("SkipTimer BLOCKED on recheck (phase=" .. tostring(p2) .. ")")
+        return false
+    end
+
+    if IsAlive() and GetPhase() == "GameInProgress" then
+        Log("SkipTimer BLOCKED (player alive in game)")
+        return false
+    end
+
+    pcall(function()
+        Remotes.VIPCommandEvent:FireServer("SkipTimer", true)
+    end)
+    return true
 end
 
 -- ============================================================
@@ -234,13 +280,6 @@ end
 local function GetHRP()
     local c = LP.Character
     return c and c:FindFirstChild("HumanoidRootPart")
-end
-
-local function IsAlive()
-    local char = LP.Character
-    if not char then return false end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    return hum and hum.Health > 0
 end
 
 local function IsInGame()
@@ -297,6 +336,20 @@ local function IsInMenu(part)
             return true
         end
         c = c.Parent; d = d + 1
+    end
+    return false
+end
+
+local function IsVIP()
+    local gf = workspace:FindFirstChild("GameFolder")
+    if gf then
+        local vip = gf:FindFirstChild("IsVIPServer")
+        if vip and vip.Value then return true end
+    end
+    if game.PrivateServerId and game.PrivateServerId ~= "" then
+        if game.PrivateServerOwnerId == LP.UserId or game.PrivateServerOwnerId == 0 then
+            return true
+        end
     end
     return false
 end
@@ -736,27 +789,30 @@ local function MainLoop()
 
         task.wait(0.2)
 
-        local bp = LP:FindFirstChild("Backpack")
-        if bp then
-            for _, t in ipairs(bp:GetChildren()) do
-                if t:IsA("Tool") then pcall(function() t:Destroy() end) end
+        -- Очистка инвентаря ТОЛЬКО в интермиссии
+        local cleanPhase = GetPhase()
+        if cleanPhase == "Intermission" or cleanPhase == nil then
+            local bp = LP:FindFirstChild("Backpack")
+            if bp then
+                for _, t in ipairs(bp:GetChildren()) do
+                    if t:IsA("Tool") then pcall(function() t:Destroy() end) end
+                end
             end
-        end
-        local char = LP.Character
-        if char then
-            for _, t in ipairs(char:GetChildren()) do
-                if t:IsA("Tool") then pcall(function() t:Destroy() end) end
+            local char = LP.Character
+            if char then
+                for _, t in ipairs(char:GetChildren()) do
+                    if t:IsA("Tool") then pcall(function() t:Destroy() end) end
+                end
             end
+        else
+            Log("Inventory clean skipped (phase=" .. tostring(cleanPhase) .. ")")
         end
         task.wait(0.2)
 
-        -- ========================================
-        -- ЖДЁМ КОНЕЦ ТЕКУЩЕГО РАУНДА
-        -- (чтобы JoinGame не выдал "host ended this round")
-        -- ========================================
+        -- ЖДЁМ ИНТЕРМИССИЮ (до 5 мин)
         Log("Wait for intermission...")
         local tW = tick()
-        while tick() - tW < 40 and not State.STOP and not State.Destroyed do
+        while tick() - tW < 300 and not State.STOP and not State.Destroyed do
             local p = GetPhase()
             if p == "Intermission" or p == nil or p == "Map Voting" then
                 break
@@ -764,6 +820,14 @@ local function MainLoop()
             task.wait(0.3)
         end
         if State.STOP or State.Destroyed then break end
+
+        local pAfter = GetPhase()
+        if pAfter == "GameInProgress" or pAfter == "Starting Game" then
+            Log("Still in game (phase=" .. tostring(pAfter) .. "), skipping cycle")
+            task.wait(3)
+            continue
+        end
+
         task.wait(0.3)
 
         Log("Play")
@@ -774,11 +838,11 @@ local function MainLoop()
 
         Fire(Remotes.VIPCommandEvent, "SetMap", "Gallery")
         task.wait(0.4)
-        Fire(Remotes.VIPCommandEvent, "SkipTimer", true)
+        TrySkipTimer()
         task.wait(0.4)
         Fire(Remotes.VIPCommandEvent, "SetMode", "Swarm")
         task.wait(0.4)
-        Fire(Remotes.VIPCommandEvent, "SkipTimer", true)
+        TrySkipTimer()
         task.wait(0.4)
 
         Log("Wait game...")
@@ -787,9 +851,8 @@ local function MainLoop()
             local p = GetPhase()
             if p == "GameInProgress" then break end
             if p == "Map Voting" or p == "Piggy Voting"
-            or p == "Selecting Map" or p == "Selecting Piggy"
-            or p == "Starting Game" or p == "Intermission" then
-                Fire(Remotes.VIPCommandEvent, "SkipTimer", true)
+            or p == "Selecting Map" or p == "Selecting Piggy" then
+                TrySkipTimer()
                 task.wait(1.0)
             else
                 task.wait(0.2)
@@ -820,7 +883,6 @@ local function MainLoop()
         if IsAlive() and GetPhase() == "GameInProgress" then
             InvalidateCDCache()
 
-            -- HAMMER
             Log("--- Hammer ---")
             if not HasItem("Hammer") then TakeItem("16198309", "Hammer") end
             if not HasItem("Hammer") and IsInGame() then
@@ -835,7 +897,6 @@ local function MainLoop()
                 Log("Boards done")
             end
 
-            -- WRENCH
             Log("--- Wrench ---")
             if not HasItem("Wrench") then TakeItem("16884681", "Wrench") end
             if not HasItem("Wrench") and IsInGame() then
@@ -849,7 +910,6 @@ local function MainLoop()
                 Log("Panel done")
             end
 
-            -- RED EGG
             Log("--- RedEgg ---")
             if GetEggInBackpack() then PlaceEgg(GetEggInBackpack()); task.wait(0.3) end
             local w1 = HasWrongEgg("RedEgg"); if w1 and IsInGame() then PlaceEgg(w1) end
@@ -865,7 +925,6 @@ local function MainLoop()
             end
             task.wait(0.5)
 
-            -- GREEN EGG
             Log("--- GreenEgg ---")
             local w2 = HasWrongEgg("GreenEgg"); if w2 and IsInGame() then PlaceEgg(w2) end
             task.wait(1)
@@ -880,7 +939,6 @@ local function MainLoop()
             end
             task.wait(0.5)
 
-            -- WHITE KEY
             Log("--- WhiteKey ---")
             if IsInGame() and not GetEggInBackpack() then
                 if not HasItem("WhiteKey") then
@@ -906,7 +964,7 @@ local function MainLoop()
             local p = GetPhase()
             ClickGuiBtn("Skip")
             if p == "Intermission" or p == nil then
-                Fire(Remotes.VIPCommandEvent, "SkipTimer", true)
+                TrySkipTimer()
                 Log("Intermission")
                 break
             end
@@ -922,7 +980,7 @@ local function MainLoop()
 end
 
 -- ============================================================
--- GUI
+-- SCREEN GUI + UISCALE (мобильная адаптация)
 -- ============================================================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "XyqwAF"
@@ -931,6 +989,31 @@ ScreenGui.IgnoreGuiInset = true
 ScreenGui.DisplayOrder = 999
 local pg = LP:FindFirstChild("PlayerGui")
 if pg then ScreenGui.Parent = pg end
+
+-- Вычисляем масштаб для мобилок
+local function CalculateUIScale()
+    local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+    -- GUI занимает максимум 80% ширины и 80% высоты экрана
+    local maxW = math.floor(vp.X * 0.80)
+    local maxH = math.floor(vp.Y * 0.80)
+    local scale = math.min(maxW / 320, maxH / 500)
+    return math.clamp(scale, 0.68, 1.0)
+end
+
+local UI_SCALE = CalculateUIScale()
+local BASE_W = 320
+local BASE_H = 500
+
+-- Возвращает центрированную позицию с учётом UIScale
+local function CenteredPos()
+    return UDim2.new(
+        0.5, -math.floor(BASE_W * UI_SCALE / 2),
+        0.5, -math.floor(BASE_H * UI_SCALE / 2)
+    )
+end
+
+-- Сохранение позиции Main
+local lastMainPos = nil
 
 local function DestroyAll()
     State.Destroyed = true
@@ -953,23 +1036,10 @@ local function DestroyAll()
     end)
 end
 
-local function GetAdaptiveSize()
-    local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
-    local scale = math.min(vp.X / 1920, vp.Y / 1080)
-    scale = math.clamp(scale, 0.75, 1.2)
-    local w = math.max(260, math.floor(320 * scale))
-    local h = math.max(420, math.floor(500 * scale))
-    return w, h
-end
-
-local MAIN_W, MAIN_H = GetAdaptiveSize()
-local SCREEN_CENTER_POS = UDim2.new(0.5, -MAIN_W / 2, 0.5, -MAIN_H / 2)
-local SCREEN_HIDDEN_POS = UDim2.new(0.5, -MAIN_W / 2, 0.5, -MAIN_H / 2 + 40)
-
 -- DOCK
 local DockBtn = Instance.new("TextButton")
 DockBtn.Size = UDim2.new(0, 150, 0, 44)
-DockBtn.Position = UDim2.new(0, 30, 0, 100)
+DockBtn.Position = CenteredPos()
 DockBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 DockBtn.TextColor3 = Color3.fromRGB(255, 120, 210)
 DockBtn.Text = "XyqwAutoFarm"
@@ -984,10 +1054,14 @@ local DockS = Instance.new("UIStroke"); DockS.Color = Color3.fromRGB(255, 100, 2
 local DockTS = Instance.new("UIStroke"); DockTS.Color = Color3.fromRGB(0, 0, 0); DockTS.Thickness = 2; DockTS.Parent = DockBtn
 HoverStroke(DockS, Color3.fromRGB(255, 100, 200), Color3.fromRGB(255, 180, 230), 2, 3, 0.4)
 
+local DockScale = Instance.new("UIScale")
+DockScale.Scale = UI_SCALE
+DockScale.Parent = DockBtn
+
 -- MAIN
 local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, MAIN_W, 0, MAIN_H)
-Main.Position = SCREEN_HIDDEN_POS
+Main.Size = UDim2.new(0, BASE_W, 0, BASE_H)
+Main.Position = CenteredPos()
 Main.BackgroundColor3 = Color3.fromRGB(10, 0, 8)
 Main.BorderSizePixel = 0
 Main.Active = true
@@ -997,21 +1071,53 @@ Main.Parent = ScreenGui
 local MainC = Instance.new("UICorner"); MainC.CornerRadius = UDim.new(0, 12); MainC.Parent = Main
 local MainStroke = Instance.new("UIStroke"); MainStroke.Color = Color3.fromRGB(255, 100, 200); MainStroke.Thickness = 2; MainStroke.Parent = Main
 
+local MainScale = Instance.new("UIScale")
+MainScale.Scale = UI_SCALE
+MainScale.Parent = Main
+
+-- Clamp позиции, чтобы не улетел за экран
+local function ClampMainPos(pos)
+    local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+    local absW = BASE_W * UI_SCALE
+    local absH = BASE_H * UI_SCALE
+    local x = pos.X.Scale * vp.X + pos.X.Offset
+    local y = pos.Y.Scale * vp.Y + pos.Y.Offset
+    x = math.clamp(x, 0, math.max(0, vp.X - absW))
+    y = math.clamp(y, 0, math.max(0, vp.Y - absH))
+    return UDim2.new(0, x, 0, y)
+end
+
 local function OpenMain()
+    Main.Position = ClampMainPos(lastMainPos or CenteredPos())
     Main.Visible = true
     Main.BackgroundTransparency = 1
     MainStroke.Transparency = 1
-    Main.Position = SCREEN_HIDDEN_POS
-    Tween(Main, 0.45, { BackgroundTransparency = 0, Position = SCREEN_CENTER_POS }, Enum.EasingStyle.Quart)
+    Tween(Main, 0.45, { BackgroundTransparency = 0 }, Enum.EasingStyle.Quart)
     Tween(MainStroke, 0.45, { Transparency = 0 }, Enum.EasingStyle.Quart)
 end
 
 local function CloseMain()
-    Tween(Main, 0.32, { BackgroundTransparency = 1, Position = SCREEN_HIDDEN_POS }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+    lastMainPos = Main.Position
+    Tween(Main, 0.32, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
     Tween(MainStroke, 0.32, { Transparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-    task.delay(0.35, function() Main.Visible = false end)
+    task.delay(0.35, function()
+        if State.Destroyed then return end
+        Main.Visible = false
+        -- DockBtn встаёт на место Main (по центру Main)
+        local mainAbsPos = Main.AbsolutePosition
+        local mainAbsSize = Main.AbsoluteSize
+        local dockAbsSize = DockBtn.AbsoluteSize
+        local centerX = math.max(0, mainAbsPos.X + mainAbsSize.X / 2 - dockAbsSize.X / 2)
+        local centerY = math.max(0, mainAbsPos.Y + mainAbsSize.Y / 2 - dockAbsSize.Y / 2)
+        DockBtn.Position = UDim2.new(0, centerX, 0, centerY)
+        DockBtn.Visible = true
+        DockBtn.BackgroundTransparency = 1
+        DockBtn.TextTransparency = 1
+        Tween(DockBtn, 0.4, { BackgroundTransparency = 0, TextTransparency = 0 }, Enum.EasingStyle.Quart)
+    end)
 end
 
+-- TITLE BAR
 local TitleBar = Instance.new("Frame")
 TitleBar.Size = UDim2.new(1, 0, 0, 34)
 TitleBar.BackgroundColor3 = Color3.fromRGB(35, 0, 25)
@@ -1020,10 +1126,10 @@ TitleBar.Parent = Main
 local TBC = Instance.new("UICorner"); TBC.CornerRadius = UDim.new(0, 12); TBC.Parent = TitleBar
 
 local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Size = UDim2.new(1, -46, 1, 0)
+TitleLabel.Size = UDim2.new(1, -80, 1, 0)
 TitleLabel.Position = UDim2.new(0, 10, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "XyqwAutoFarm v14.1 | Gallery"
+TitleLabel.Text = "XyqwAutoFarm v15.0 | Gallery"
 TitleLabel.TextColor3 = Color3.fromRGB(255, 130, 215)
 TitleLabel.TextSize = 13
 TitleLabel.Font = Enum.Font.GothamBold
@@ -1032,9 +1138,34 @@ TitleLabel.TextTruncate = Enum.TextTruncate.AtEnd
 TitleLabel.Parent = TitleBar
 AddTextStroke(TitleLabel, 2)
 
+-- Кнопка сброса позиции
+local ResetPosBtn = Instance.new("TextButton")
+ResetPosBtn.Size = UDim2.new(0, 28, 0, 28)
+ResetPosBtn.Position = UDim2.new(1, -62, 0.5, -14)
+ResetPosBtn.BackgroundColor3 = Color3.fromRGB(35, 0, 50)
+ResetPosBtn.TextColor3 = Color3.fromRGB(255, 180, 230)
+ResetPosBtn.Text = "⟲"
+ResetPosBtn.TextSize = 16
+ResetPosBtn.Font = Enum.Font.GothamBold
+ResetPosBtn.BorderSizePixel = 0
+ResetPosBtn.Parent = TitleBar
+ResetPosBtn.AutoButtonColor = false
+local RPC = Instance.new("UICorner"); RPC.CornerRadius = UDim.new(0, 6); RPC.Parent = ResetPosBtn
+local RPStroke = Instance.new("UIStroke"); RPStroke.Color = Color3.fromRGB(255, 100, 200); RPStroke.Thickness = 1.5; RPStroke.Parent = ResetPosBtn
+AddTextStroke(ResetPosBtn, 2)
+
+TrackConn(ResetPosBtn.MouseButton1Click:Connect(function()
+    lastMainPos = nil
+    local newPos = ClampMainPos(CenteredPos())
+    Tween(Main, 0.35, { Position = newPos }, Enum.EasingStyle.Quart)
+    lastMainPos = newPos
+    Notify("Position reset", 2)
+end))
+
+-- CLOSE
 local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.new(0, 24, 0, 24)
-CloseBtn.Position = UDim2.new(1, -28, 0.5, -12)
+CloseBtn.Size = UDim2.new(0, 28, 0, 28)
+CloseBtn.Position = UDim2.new(1, -32, 0.5, -14)
 CloseBtn.BackgroundColor3 = Color3.fromRGB(60, 0, 40)
 CloseBtn.TextColor3 = Color3.fromRGB(255, 130, 215)
 CloseBtn.Text = "X"
@@ -1070,7 +1201,7 @@ local function MakeToggle(text, y, getState, onToggle)
     rStroke.Parent = row
 
     local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -50, 1, 0)
+    lbl.Size = UDim2.new(1, -60, 1, 0)
     lbl.Position = UDim2.new(0, 10, 0, 0)
     lbl.BackgroundTransparency = 1
     lbl.Text = text
@@ -1082,8 +1213,8 @@ local function MakeToggle(text, y, getState, onToggle)
     AddTextStroke(lbl, 2)
 
     local box = Instance.new("TextButton")
-    box.Size = UDim2.new(0, 24, 0, 24)
-    box.Position = UDim2.new(1, -34, 0.5, -12)
+    box.Size = UDim2.new(0, 30, 0, 30)
+    box.Position = UDim2.new(1, -40, 0.5, -15)
     box.BackgroundColor3 = getState() and Color3.fromRGB(0, 220, 90) or Color3.fromRGB(220, 0, 0)
     box.Text = ""
     box.BorderSizePixel = 0
@@ -1111,11 +1242,11 @@ local function MakeToggle(text, y, getState, onToggle)
     end))
 
     TrackConn(box.MouseEnter:Connect(function()
-        Tween(box, 0.3, { Size = UDim2.new(0, 28, 0, 28), Position = UDim2.new(1, -36, 0.5, -14) }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+        Tween(box, 0.3, { Size = UDim2.new(0, 34, 0, 34), Position = UDim2.new(1, -42, 0.5, -17) }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
         Tween(bStroke, 0.3, { Color = Color3.fromRGB(255, 200, 240), Thickness = 2 }, Enum.EasingStyle.Quart)
     end))
     TrackConn(box.MouseLeave:Connect(function()
-        Tween(box, 0.3, { Size = UDim2.new(0, 24, 0, 24), Position = UDim2.new(1, -34, 0.5, -12) }, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+        Tween(box, 0.3, { Size = UDim2.new(0, 30, 0, 30), Position = UDim2.new(1, -40, 0.5, -15) }, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
         Tween(bStroke, 0.3, { Color = Color3.fromRGB(255, 100, 200), Thickness = 1.5 }, Enum.EasingStyle.Quart)
     end))
 
@@ -1261,7 +1392,7 @@ task.spawn(function()
     end
 end)
 
--- DRAG MAIN
+-- DRAG MAIN (учитывает UIScale)
 local drag = false
 local dragStart = Vector2.new()
 local dragStartScale = Vector2.new()
@@ -1273,8 +1404,12 @@ TrackConn(TitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
     or input.UserInputType == Enum.UserInputType.Touch then
         local mp = input.Position
-        local cp, cs = CloseBtn.AbsolutePosition, CloseBtn.AbsoluteSize
-        if mp.X >= cp.X and mp.X <= cp.X + cs.X and mp.Y >= cp.Y and mp.Y <= cp.Y + cs.Y then return end
+        local function IsOver(btn)
+            if not btn then return false end
+            local p, s = btn.AbsolutePosition, btn.AbsoluteSize
+            return mp.X >= p.X and mp.X <= p.X + s.X and mp.Y >= p.Y and mp.Y <= p.Y + s.Y
+        end
+        if IsOver(CloseBtn) or IsOver(ResetPosBtn) then return end
         drag = true; moved = false
         dragStart = Vector2.new(input.Position.X, input.Position.Y)
         dragStartScale = Vector2.new(Main.Position.X.Scale, Main.Position.Y.Scale)
@@ -1286,8 +1421,9 @@ TrackConn(UserInputService.InputChanged:Connect(function(input)
     if State.Destroyed then return end
     if drag and (input.UserInputType == Enum.UserInputType.MouseMovement
     or input.UserInputType == Enum.UserInputType.Touch) then
-        local dx = input.Position.X - dragStart.X
-        local dy = input.Position.Y - dragStart.Y
+        -- Делим delta на UI_SCALE, потому что UIScale масштабирует позицию
+        local dx = (input.Position.X - dragStart.X) / UI_SCALE
+        local dy = (input.Position.Y - dragStart.Y) / UI_SCALE
         if math.abs(dx) > 6 or math.abs(dy) > 6 then moved = true end
         if moved then
             Main.Position = UDim2.new(
@@ -1301,6 +1437,10 @@ end))
 TrackConn(UserInputService.InputEnded:Connect(function(input)
     if (input.UserInputType == Enum.UserInputType.MouseButton1
     or input.UserInputType == Enum.UserInputType.Touch) and drag then
+        if moved then
+            lastMainPos = ClampMainPos(Main.Position)
+            Main.Position = lastMainPos
+        end
         drag = false; moved = false
     end
 end))
@@ -1339,16 +1479,7 @@ TrackConn(UserInputService.InputEnded:Connect(function(input)
     end
 end))
 
-TrackConn(CloseBtn.MouseButton1Click:Connect(function()
-    CloseMain()
-    task.delay(0.35, function()
-        if State.Destroyed then return end
-        DockBtn.Visible = true
-        DockBtn.BackgroundTransparency = 1
-        DockBtn.TextTransparency = 1
-        Tween(DockBtn, 0.4, { BackgroundTransparency = 0, TextTransparency = 0 }, Enum.EasingStyle.Quart)
-    end)
-end))
+TrackConn(CloseBtn.MouseButton1Click:Connect(CloseMain))
 
 task.spawn(function()
     task.wait(0.3)
@@ -1365,5 +1496,5 @@ task.spawn(function()
     Log("Auto-enabled: Anti-AFK, NoWalk")
 end)
 
-Notify("AutoFarm v14.1 loaded!", 5)
-print("[AF] Ready v14.1")
+Notify("AutoFarm v15.0 loaded!", 5)
+print("[AF] Ready v15.0 | UI_SCALE = " .. string.format("%.2f", UI_SCALE))
