@@ -26,8 +26,6 @@ local THEME = {
 }
 local FONT = Enum.Font.Gotham
 
-print("[XyqwPiggy] Step 1: services loaded")
-
 -- ============================================================
 -- АДАПТИВНЫЙ МАСШТАБ
 -- ============================================================
@@ -43,7 +41,32 @@ local function CalculateUIScale()
 end
 local UI_SCALE = CalculateUIScale()
 
-print("[XyqwPiggy] Step 2: UI_SCALE =", UI_SCALE)
+local DOCK_W, DOCK_H = 140, 44
+
+-- ============================================================
+-- ХЕЛПЕР: ГРАНИЦЫ ЭКРАНА
+-- ============================================================
+local function GetViewportSize()
+    local vp = Vector2.new(1280, 720)
+    pcall(function()
+        if workspace.CurrentCamera then
+            vp = workspace.CurrentCamera.ViewportSize
+        end
+    end)
+    return vp
+end
+
+-- Клэмпит ЛЮБУЮ UDim2-позицию в границы экрана (возвращает Offset-UDim2)
+local function ClampDockPos(pos)
+    local vp = GetViewportSize()
+    local absW = DOCK_W * UI_SCALE
+    local absH = DOCK_H * UI_SCALE
+    local rawX = (pos.X.Scale * vp.X) + pos.X.Offset
+    local rawY = (pos.Y.Scale * vp.Y) + pos.Y.Offset
+    local x = math.clamp(rawX, 0, math.max(0, vp.X - absW))
+    local y = math.clamp(rawY, 0, math.max(0, vp.Y - absH))
+    return UDim2.new(0, math.floor(x), 0, math.floor(y))
+end
 
 -- ============================================================
 -- СОХРАНЕНИЕ ПОЗИЦИИ DOCK (БЕЗОПАСНО)
@@ -61,7 +84,6 @@ if HAS_FS then
     end)
 end
 
--- Возвращает UDim2 в Offset-формате или nil
 local function LoadDockPos()
     if not HAS_FS then return nil end
     local saved = nil
@@ -71,7 +93,7 @@ local function LoadDockPos()
             if data then
                 local x, y = data:match("(%-?%d+)|(%-?%d+)")
                 if x and y then
-                    saved = UDim2.new(0, tonumber(x), 0, tonumber(y))
+                    saved = UDim2.new(0, tonumber(x) or 0, 0, tonumber(y) or 0)
                 end
             end
         end
@@ -79,22 +101,18 @@ local function LoadDockPos()
     return saved
 end
 
--- Центр экрана (Offset-формат)
+-- Центр экрана (Offset-формат), с учётом UI_SCALE
 local function GetDefaultDockPos()
-    local vp = Vector2.new(1280, 720)
-    pcall(function()
-        if workspace.CurrentCamera then
-            vp = workspace.CurrentCamera.ViewportSize
-        end
-    end)
-    local absW = 140 * UI_SCALE
-    local absH = 44 * UI_SCALE
+    local vp = GetViewportSize()
+    local absW = DOCK_W * UI_SCALE
+    local absH = DOCK_H * UI_SCALE
     return UDim2.new(0, math.floor((vp.X - absW) / 2), 0, math.floor((vp.Y - absH) / 2))
 end
 
-local savedDockPos = LoadDockPos() or GetDefaultDockPos()
+-- Загружаем и СРАЗУ клэмпим по текущему экрану
+local savedDockPos = ClampDockPos(LoadDockPos() or GetDefaultDockPos())
 
-print("[XyqwPiggy] Step 3: savedDockPos =", savedDockPos)
+print("[XyqwPiggy] Viewport:", GetViewportSize(), "UI_SCALE:", UI_SCALE, "savedDockPos:", savedDockPos)
 
 local function Notify(text, duration)
     duration = duration or 2
@@ -195,8 +213,6 @@ for _, obj in ipairs(playerGui:GetChildren()) do
         pcall(function() obj:Destroy() end)
     end
 end
-
-print("[XyqwPiggy] Step 4: cleanup done")
 
 local function GetPiggyCoins()
     local pg = LP:FindFirstChild("PlayerGui")
@@ -327,16 +343,28 @@ ScreenGui.Name = "XyqwPiggy"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.IgnoreGuiInset = true
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.DisplayOrder = 999
-pcall(function() ScreenGui.Parent = CoreGui end)
-if not ScreenGui.Parent then ScreenGui.Parent = playerGui end
+ScreenGui.DisplayOrder = 9999
 
-print("[XyqwPiggy] Step 5: ScreenGui created")
+-- Приоритет: gethui() → CoreGui → playerGui
+local dockParentSet = false
+if type(gethui) == "function" then
+    pcall(function()
+        ScreenGui.Parent = gethui()
+        dockParentSet = true
+    end)
+end
+if not dockParentSet then
+    dockParentSet = pcall(function() ScreenGui.Parent = CoreGui end)
+end
+if not dockParentSet or not ScreenGui.Parent then
+    ScreenGui.Parent = playerGui
+end
+print("[XyqwPiggy] ScreenGui parent:", ScreenGui.Parent and ScreenGui.Parent:GetFullName() or "nil")
 
 -- DOCK
 local DockBtn = Instance.new("TextButton")
 DockBtn.Name = "DockBtn"
-DockBtn.Size = UDim2.new(0, 140, 0, 44)
+DockBtn.Size = UDim2.new(0, DOCK_W, 0, DOCK_H)
 DockBtn.Position = savedDockPos
 DockBtn.BackgroundColor3 = THEME.BG
 DockBtn.TextColor3 = THEME.MAIN
@@ -346,13 +374,12 @@ DockBtn.Font = FONT
 DockBtn.BorderSizePixel = 0
 DockBtn.Parent = ScreenGui
 DockBtn.AutoButtonColor = false
-DockBtn.ZIndex = 1000
+DockBtn.ZIndex = 10000
 DockBtn.Visible = true
+DockBtn.Active = true
 local DBC = Instance.new("UICorner"); DBC.CornerRadius = UDim.new(0, 12); DBC.Parent = DockBtn
 local DockStroke = AddStroke(DockBtn, THEME.MAIN, 2)
 local DockScale = Instance.new("UIScale"); DockScale.Scale = UI_SCALE; DockScale.Parent = DockBtn
-
-print("[XyqwPiggy] Step 6: DockBtn created")
 
 local function SaveDockPos()
     if not HAS_FS then return end
@@ -372,6 +399,8 @@ DockBtn.MouseLeave:Connect(function()
     Tween(DockStroke, 0.3, { Thickness = 2, Color = THEME.MAIN })
     Tween(DockBtn, 0.3, { BackgroundColor3 = THEME.BG })
 end)
+
+print("[XyqwPiggy] DockBtn initial pos:", DockBtn.Position, "Visible:", DockBtn.Visible)
 
 -- ============================================================
 -- MAIN FRAME
@@ -600,8 +629,6 @@ local function MakeBtn(name, x, w)
 end
 local ScanBtn = MakeBtn("Scan", 0, 0.49)
 local ResetBtn = MakeBtn("Reset", 0.51, 0.49)
-
-print("[XyqwPiggy] Step 7: MainFrame built")
 
 -- ============================================================
 -- MISC FRAME
@@ -889,7 +916,7 @@ ESPFolder.Parent = CoreGui
 local ESP = { Items = {}, Monster = {}, Players = {} }
 
 -- ============================================================
--- ИМЕНА ПРЕДМЕТОВ (meshId приоритетнее part.Name)
+-- ИМЕНА ПРЕДМЕТОВ
 -- ============================================================
 local function GetKeyNameByColor(c)
     local h, s, _ = Color3.toHSV(c)
@@ -906,7 +933,6 @@ local function GetKeyNameByColor(c)
     return "Key"
 end
 
--- Уникальные meshId → названия
 local MESH_NAMES = {
     [16198309]   = "Plank",
     [725833400]  = "Hammer",
@@ -925,7 +951,6 @@ end
 local function GetItemName(item)
     local part = item.part
     if not part then return "Unknown" end
-
     local mesh = part:FindFirstChildOfClass("SpecialMesh")
     local meshNum = mesh and GetMeshNumber(mesh.MeshId)
     if meshNum then
@@ -939,7 +964,6 @@ local function GetItemName(item)
         local mapped = MESH_NAMES[meshNum]
         if mapped then return mapped end
     end
-
     local n = part.Name
     if n and n ~= "" and not n:match("^%-?%d+$") then return n end
     return "Item"
@@ -1446,7 +1470,7 @@ local WarnGui = Instance.new("ScreenGui")
 WarnGui.Name = "XyqwWarn"
 WarnGui.ResetOnSpawn = false
 WarnGui.IgnoreGuiInset = true
-WarnGui.DisplayOrder = 1000
+WarnGui.DisplayOrder = 10000
 pcall(function() WarnGui.Parent = CoreGui end)
 if not WarnGui.Parent then WarnGui.Parent = playerGui end
 
@@ -1801,12 +1825,13 @@ UserInputService.InputChanged:Connect(function(input)
 end)
 
 -- ============================================================
--- CLOSE / MISC BUTTONS
+-- CLOSE / MISC BUTTONS (ИСПРАВЛЕНО: клэмпинг)
 -- ============================================================
 CloseBtn.MouseButton1Click:Connect(function()
     CloseMain()
     CloseMisc()
     task.delay(0.3, function()
+        savedDockPos = ClampDockPos(savedDockPos)
         DockBtn.Position = savedDockPos
         DockBtn.Visible = true
         DockBtn.BackgroundTransparency = 1
@@ -1821,7 +1846,7 @@ end)
 MiscClose.MouseButton1Click:Connect(CloseMisc)
 
 -- ============================================================
--- DOCK DRAG + SAVE
+-- DOCK DRAG + SAVE (ИСПРАВЛЕНО: клэмпинг при drag)
 -- ============================================================
 local dockDrag, dockStart, dockStartPos, dockMoved = false, nil, nil, false
 DockBtn.InputBegan:Connect(function(input)
@@ -1835,25 +1860,21 @@ UserInputService.InputChanged:Connect(function(input)
         local d = input.Position - dockStart
         if math.abs(d.X) > 5 or math.abs(d.Y) > 5 then dockMoved = true end
         if dockMoved then
-            local newX = dockStartPos.X.Offset + d.X / UI_SCALE
-            local newY = dockStartPos.Y.Offset + d.Y / UI_SCALE
-            local vp = Vector2.new(1280, 720)
-            pcall(function()
-                if workspace.CurrentCamera then vp = workspace.CurrentCamera.ViewportSize end
-            end)
-            local absW = 140 * UI_SCALE
-            local absH = 44 * UI_SCALE
-            newX = math.clamp(newX, 0, math.max(0, vp.X - absW))
-            newY = math.clamp(newY, 0, math.max(0, vp.Y - absH))
-            DockBtn.Position = UDim2.new(0, newX, 0, newY)
-            savedDockPos = DockBtn.Position
+            local newPos = UDim2.new(
+                0, dockStartPos.X.Offset + d.X / UI_SCALE,
+                0, dockStartPos.Y.Offset + d.Y / UI_SCALE
+            )
+            local clamped = ClampDockPos(newPos)
+            DockBtn.Position = clamped
+            savedDockPos = clamped
         end
     end
 end)
 UserInputService.InputEnded:Connect(function(input)
     if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and dockDrag then
         if dockMoved then
-            savedDockPos = DockBtn.Position
+            savedDockPos = ClampDockPos(DockBtn.Position)
+            DockBtn.Position = savedDockPos
             SaveDockPos()
         else
             DockBtn.Visible = false
@@ -1922,18 +1943,33 @@ DestroyXyqwPiggy = function()
 end
 
 -- ============================================================
--- СТАРТ
+-- СТАРТ (ИСПРАВЛЕНО: принудительный reposition + диагностика)
 -- ============================================================
 task.spawn(function()
-    task.wait(0.3)
+    task.wait(0.5)
     if State.destroyed then return end
+    -- Повторно клэмпим: viewport мог измениться между инициализацией и стартом
+    savedDockPos = ClampDockPos(savedDockPos)
+    DockBtn.Position = savedDockPos
+    DockBtn.Visible = true
+    DockBtn.ZIndex = 10000
     DockBtn.BackgroundTransparency = 1
     Tween(DockBtn, 0.5, { BackgroundTransparency = 0 }, Enum.EasingStyle.Quart)
+    pcall(function()
+        local ap = DockBtn.AbsolutePosition
+        local as = DockBtn.AbsoluteSize
+        print(string.format(
+            "[XyqwPiggy] DockBtn FINAL | Pos=%s | AbsPos=(%d,%d) | AbsSize=(%d,%d) | Visible=%s | Parent=%s",
+            tostring(DockBtn.Position),
+            ap.X, ap.Y, as.X, as.Y,
+            tostring(DockBtn.Visible),
+            DockBtn.Parent and DockBtn.Parent:GetFullName() or "nil"
+        ))
+    end)
 end)
 
 Notify("XyqwPiggy v" .. VERSION .. " loaded!", 4)
 print("[XyqwPiggy v" .. VERSION .. "] Loaded!")
-print("[XyqwPiggy v" .. VERSION .. "] Author: Xyqwerq")
 
 end)
 
